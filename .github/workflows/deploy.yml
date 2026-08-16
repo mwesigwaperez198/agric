@@ -31,6 +31,8 @@ jobs:
 
       - name: Build web app
         run: pnpm --filter @farm/web build
+        env:
+          NEXT_PUBLIC_API_URL: https://agric-api.onrender.com/api/v1
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
