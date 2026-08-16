@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     vision_provider: str = "auto"
     whisper_api_key: str = ""
     elevenlabs_api_key: str = ""
+    gemini_api_key: str = ""
 
     # Uploads
     upload_dir: str = "data/uploads"

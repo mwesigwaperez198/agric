@@ -202,12 +202,12 @@ def _reason(text: str, crop_type: str, history: list[dict], user_name: str) -> s
 
     normalized = _normalize(text)
 
-    if not settings.whisper_api_key:
+    if not settings.gemini_api_key:
         return _fallback_reason(normalized, text)
 
     import httpx
 
-    system_prompt = f"""You are NOVA, a friendly and smart agricultural assistant for farmers in Uganda.
+    system_instruction = f"""You are NOVA, a friendly and smart agricultural assistant for farmers in Uganda.
 
 CORE RULES:
 - You understand ANY question, even with misspellings, broken English, or local language words
@@ -217,40 +217,47 @@ CORE RULES:
 - Be warm and encouraging
 - Use everyday language a farmer understands
 - Give specific steps, local varieties, UGX prices when you know them
+- Use Google Search to find current market prices, weather forecasts, and local supplier info
 - End with ONE thing they can do right now
 - If you don't know something specific, give your best general guidance and be honest
+- Always answer in English (translation happens after)
 
-UGANDA QUICK FACTS:
-- Seasons: Mar-May (first), Sept-Nov (second)
-- Coffee: Ruiru 11, NARO 1; copper spray for rust; 1200-2000m for Arabica
-- Maize: Longe 5, KH 600-23A; NPK at planting, CAN at 6 weeks
-- Beans: NARO Bean 1, K131; intercrop with maize
-- Banana: Matooke, beer bananas; mulch leaves
-- Cassava: NAROCASS 1, 14 months to harvest
-- Livestock: deworm every 3 months, FMD vaccine
-- Pruning: remove dead/sick branches, improve airflow, let light in
-- Fertilizer: NPK 17:17:17, CAN, DAP, compost
-- Pest control: neem spray, copper fungicide, wood ash for aphids
+User: {user_name}
+Context: {crop_type} farming in Uganda"""
 
-User name: {user_name}"""
-
-    messages = [{"role": "system", "content": system_prompt}]
+    contents = []
     for msg in history[-6:]:
-        role = "assistant" if msg["role"] == "assistant" else "user"
-        messages.append({"role": role, "content": msg["content"]})
-    messages.append({"role": "user", "content": text})
+        role = "user" if msg["role"] == "user" else "model"
+        contents.append({"role": role, "parts": [{"text": msg["content"]}]})
+    contents.append({"role": "user", "parts": [{"text": text}]})
+
+    payload = {
+        "system_instruction": {"parts": [{"text": system_instruction}]},
+        "contents": contents,
+        "tools": [{"google_search_retrieval": {}}],
+        "generation_config": {
+            "temperature": 0.7,
+            "max_output_tokens": 800,
+        },
+    }
 
     try:
         resp = httpx.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {settings.whisper_api_key}"},
-            json={"model": "gpt-4o-mini", "max_tokens": 800, "temperature": 0.7, "messages": messages},
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={settings.gemini_api_key}",
+            json=payload,
             timeout=30,
         )
         resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
+        data = resp.json()
+        candidates = data.get("candidates", [])
+        if candidates:
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if parts:
+                return parts[0].get("text", "").strip()
     except Exception:
-        return _fallback_reason(normalized, text)
+        pass
+
+    return _fallback_reason(normalized, text)
 
 
 def _fallback_reason(normalized: str, original: str) -> str:

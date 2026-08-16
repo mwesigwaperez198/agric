@@ -210,11 +210,68 @@ def anthropic_diagnose(data: bytes, crop_type: str, note: str | None = None) -> 
     return json.loads(text[start : end + 1])
 
 
+def gemini_diagnose(data: bytes, crop_type: str, note: str | None = None) -> dict:
+    import base64
+
+    import httpx
+
+    b64 = base64.b64encode(data).decode("ascii")
+    prompt = f"""You are an expert agricultural diagnostics AI for Ugandan farmers. Analyze this {crop_type} photo.
+
+Provide a COMPREHENSIVE diagnosis. Return strict JSON with these keys:
+{{
+  "label": "disease_or_condition_name",
+  "healthy": true/false,
+  "confidence": 0.0-1.0,
+  "plant_identification": "species and variety if identifiable",
+  "condition_summary": "2-3 sentence overview of what you observe",
+  "root_cause_analysis": "detailed explanation of why this condition occurs",
+  "severity": "low/medium/high/critical",
+  "affected_parts": ["list of plant parts affected"],
+  "spread_risk": "how likely it is to spread to other plants",
+  "immediate_actions": [
+    "Step 1: specific action with product names and dosages",
+    "Step 2: ..."
+  ],
+  "long_term_management": ["Seasonal practice 1", "Seasonal practice 2"],
+  "local_products": ["products available in Uganda with costs"],
+  "references": ["research institution reference"],
+  "advice": "concise 1-2 sentence summary for quick action"
+}}
+
+Context: Ugandan agriculture — NARO, UCDA, copper fungicides, bimodal rainfall.
+{f"Farmer observation: {note}" if note else ""}
+Analyze carefully. If healthy, still provide monitoring advice."""
+
+    payload = {
+        "contents": [{
+            "parts": [
+                {"text": prompt},
+                {"inline_data": {"mime_type": "image/jpeg", "data": b64}},
+            ]
+        }],
+        "generation_config": {"temperature": 0.3, "max_output_tokens": 1500},
+    }
+
+    resp = httpx.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={settings.gemini_api_key}",
+        json=payload,
+        timeout=60,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    text = data["candidates"][0]["content"]["parts"][0]["text"]
+    start, end = text.find("{"), text.rfind("}")
+    return json.loads(text[start:end + 1])
+
+
 def diagnose(data: bytes, crop_type: str, note: str | None = None) -> tuple[dict, str]:
     """Runs the configured provider. Returns (prediction, model_name)."""
     validate_image(data)
     provider = settings.vision_provider.lower()
 
+    if provider in ("gemini", "auto") and settings.gemini_api_key:
+        return gemini_diagnose(data, crop_type, note), "gemini-2.0-flash"
     if provider in ("openai", "auto") and settings.whisper_api_key:
         return openai_diagnose(data, crop_type, note), "gpt-4o-vision"
     if provider == "anthropic" and settings.whisper_api_key:
