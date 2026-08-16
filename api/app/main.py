@@ -26,7 +26,6 @@ from api.app.routers import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    os.makedirs(settings.upload_dir, exist_ok=True)
     init_db()
     yield
 
@@ -86,4 +85,5 @@ for router in (
 ):
     app.include_router(router, prefix=settings.api_prefix)
 
+os.makedirs(settings.upload_dir, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
