@@ -2,7 +2,9 @@ packages:
   - web
 
 allowBuilds:
+  esbuild: true
   sharp: true
+  workerd: true
 
 fetchRetries: 20
 fetchTimeout: 600000

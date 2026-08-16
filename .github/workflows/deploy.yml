@@ -1,0 +1,55 @@
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    name: Build & deploy static site
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web app
+        run: pnpm --filter @farm/web build
+
+      - name: Verify production env guard
+        run: |
+          if [ -z "$SECRET_KEY" ] || [ -z "$DATABASE_URL" ]; then
+            echo "::error::SECRET_KEY and DATABASE_URL must be set as repository secrets for production."
+            exit 1
+          fi
+          if [ "$SECRET_KEY" = "change-me-to-a-64-char-random-string" ]; then
+            echo "::error::SECRET_KEY is still the placeholder value. Set a real 64-char secret."
+            exit 1
+          fi
+        env:
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy web/out --project-name agric
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
