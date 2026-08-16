@@ -89,8 +89,8 @@ def voice_chat(
         except Exception:
             answer_local = answer_en
     else:
-        _store_message(db, user.id, user_text, "en")
-        _store_message(db, user.id, answer_en, "en")
+        _store_message(db, user.id, user_text, "user", "en")
+        _store_message(db, user.id, answer_en, "assistant", "en")
         answer_local = None
 
     tts = synthesize(answer_local or answer_en, user_lang)
@@ -306,8 +306,8 @@ def text_chat(body: TextChatRequest, user: CurrentUser, db: DbSession, backgroun
 
     passed, blocked = guard_query(user_text)
     if not passed:
-        _store_message(db, user.id, user_text, body.locale)
-        _store_message(db, user.id, blocked, body.locale)
+        _store_message(db, user.id, user_text, "user", body.locale)
+        _store_message(db, user.id, blocked, "assistant", body.locale)
         return VoiceQueryOut(answer=blocked, guardrail=False, dialect=body.locale)
 
     history = _get_history(db, user.id, limit=10)
@@ -320,8 +320,8 @@ def text_chat(body: TextChatRequest, user: CurrentUser, db: DbSession, backgroun
         except Exception:
             answer_local = answer_en
     else:
-        _store_message(db, user.id, user_text, "en")
-        _store_message(db, user.id, answer_en, "en")
+        _store_message(db, user.id, user_text, "user", "en")
+        _store_message(db, user.id, answer_en, "assistant", "en")
         answer_local = None
 
     tts = synthesize(answer_local or answer_en, body.locale)
