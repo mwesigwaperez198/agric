@@ -52,7 +52,7 @@ export default function ListingDetailView() {
     setBusy(true);
     setError(null);
     try {
-      const order = await apiFetch<{ id: number }>("/orders", { body: { listing_id: listing.id, quantity: qty } });
+      const order = await apiFetch<{ id: number }>("/orders", { method: "POST", body: { listing_id: listing.id, quantity: qty } });
       router.push(`/orders/${order.id}`);
     } catch (err) {
       setError(getErrorMessage(err));

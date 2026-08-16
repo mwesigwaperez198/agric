@@ -27,7 +27,7 @@ export default function LoginPage() {
     try {
       const res = await apiFetch<{ access_token: string; refresh_token: string; totp_required: boolean }>(
         "/auth/login",
-        { body: { email, password } }
+        { method: "POST", body: { email, password } }
       );
       if (res.totp_required) {
         setTotpRequired(true);
@@ -47,6 +47,7 @@ export default function LoginPage() {
     setBusy(true);
     try {
       const res = await apiFetch<{ access_token: string; refresh_token: string }>("/auth/totp/login", {
+        method: "POST",
         body: { email, password, code },
       });
       await completeLogin(res.access_token, res.refresh_token);

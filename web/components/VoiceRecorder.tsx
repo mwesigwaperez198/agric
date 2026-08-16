@@ -42,7 +42,7 @@ export function VoiceRecorder({ onTranscript }: { onTranscript: (text: string) =
     const form = new FormData();
     form.append("file", blob, "voice.webm");
     try {
-      const res = await apiFetch<{ text: string }>("/voice/transcribe", { formData: form });
+      const res = await apiFetch<{ text: string }>("/voice/transcribe", { method: "POST", formData: form });
       if (res.text) {
         onTranscript(res.text);
       } else {

@@ -80,6 +80,7 @@ export default function BiosensorPage() {
     setError(null);
     try {
       await apiFetch("/biosensor/readings", {
+        method: "POST",
         body: {
           device_id: `sensor-${Math.random().toString(16).slice(2, 6)}`,
           crop_name: crop,

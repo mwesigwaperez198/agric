@@ -70,7 +70,7 @@ export default function FarmerDashboard() {
         quantity: Number(newListing.quantity),
         price_per_unit: Number(newListing.price_per_unit),
       };
-      await apiFetch<Listing>("/listings", { body: payload });
+      await apiFetch<Listing>("/listings", { method: "POST", body: payload });
       setNewListing({ crop_name: "", category: "coffee", variety: "", quantity: "", unit: "kg", price_per_unit: "", region: "", quality_grade: "" });
       myListings.refetch();
     } catch (err) {

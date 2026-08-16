@@ -79,6 +79,7 @@ export default function OrderDetailView() {
     setError(null);
     try {
       await apiFetch(`/orders/${params.id}/confirm`, {
+        method: "POST",
         body: { proof_url: null, note: "Delivery confirmed in app" },
       });
       router.refresh();
@@ -93,7 +94,7 @@ export default function OrderDetailView() {
     setBusy(true);
     setError(null);
     try {
-      await apiFetch(`/orders/${params.id}/cancel`, { body: {} });
+      await apiFetch(`/orders/${params.id}/cancel`, { method: "POST", body: {} });
       router.refresh();
       window.location.reload();
     } catch (err) {

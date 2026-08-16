@@ -55,7 +55,7 @@ export default function DiagnosticsPage() {
       form.append("crop_type", cropType);
       if (note) form.append("note", note);
       form.append("locale", locale);
-      const res = await apiFetch<Diagnostic>("/diagnostics/analyze", { formData: form });
+      const res = await apiFetch<Diagnostic>("/diagnostics/analyze", { method: "POST", formData: form });
       setResult(res);
       history.refetch();
     } catch (err) {
@@ -72,6 +72,7 @@ export default function DiagnosticsPage() {
     setError(null);
     try {
       const res = await apiFetch<VoiceAnswer>("/voice/query", {
+        method: "POST",
         body: { text: q, locale, crop_type: cropType },
       });
       setVoiceAnswer(res);

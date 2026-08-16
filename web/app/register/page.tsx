@@ -34,6 +34,7 @@ export default function RegisterPage() {
     setBusy(true);
     try {
       const res = await apiFetch<{ access_token: string; refresh_token: string }>("/auth/register", {
+        method: "POST",
         body: form,
       });
       setTokens(res.access_token, res.refresh_token);

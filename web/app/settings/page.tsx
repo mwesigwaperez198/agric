@@ -52,7 +52,7 @@ export default function SettingsPage() {
 
   async function setupTotp() {
     try {
-      const res = await apiFetch<{ secret: string; provisioning_uri: string }>("/auth/totp/setup");
+      const res = await apiFetch<{ secret: string; provisioning_uri: string }>("/auth/totp/setup", { method: "POST" });
       setTotpSecret(res.secret);
       setProvisionUri(res.provisioning_uri);
       setTotpMsg(null);
@@ -63,7 +63,7 @@ export default function SettingsPage() {
 
   async function enableTotp() {
     try {
-      const res = await apiFetch<{ totp_enabled: boolean }>("/auth/totp/enable", { body: { code: totpCode } });
+      const res = await apiFetch<{ totp_enabled: boolean }>("/auth/totp/enable", { method: "POST", body: { code: totpCode } });
       if (user) setUser({ ...user, totp_enabled: res.totp_enabled });
       setTotpMsg("Two-factor authentication enabled.");
       setTotpSecret(null);
