@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     allowed_origins: list[str] = [
         "http://localhost:3000",
         "https://localhost:3000",
+        "https://agric-b35.pages.dev",
+        "https://*.agric-b35.pages.dev",
     ]
 
     # Database
