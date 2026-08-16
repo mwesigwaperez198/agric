@@ -257,15 +257,26 @@ Analyze carefully. If healthy, still provide monitoring advice."""
     }
 
     resp = httpx.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}",
-        json=payload,
+        "https://generativelanguage.googleapis.com/v1beta2/interactions",
+        headers={"x-goog-api-key": settings.gemini_api_key, "Content-Type": "application/json"},
+        json={
+            "model": "gemini-2.5-flash",
+            "input": prompt,
+            "media": [{"mime_type": "image/jpeg", "data": b64}],
+        },
         timeout=60,
     )
     resp.raise_for_status()
     data = resp.json()
-    text = data["candidates"][0]["content"]["parts"][0]["text"]
-    start, end = text.find("{"), text.rfind("}")
-    return json.loads(text[start:end + 1])
+    steps = data.get("steps", [])
+    for step in steps:
+        for content in step.get("content", []):
+            if content.get("type") == "text" and content.get("text"):
+                text = content["text"]
+                start, end = text.find("{"), text.rfind("}")
+                if start != -1 and end != -1:
+                    return json.loads(text[start:end + 1])
+    raise ValueError("Gemini vision returned no text")
 
 
 def diagnose(data: bytes, crop_type: str, note: str | None = None) -> tuple[dict, str]:

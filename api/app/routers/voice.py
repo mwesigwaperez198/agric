@@ -260,8 +260,12 @@ Answer the question thoroughly and comprehensively. Be as helpful and detailed a
 
     try:
         resp = httpx.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}",
-            json=payload,
+            "https://generativelanguage.googleapis.com/v1beta2/interactions",
+            headers={"x-goog-api-key": settings.gemini_api_key, "Content-Type": "application/json"},
+            json={
+                "model": "gemini-2.5-flash",
+                "input": f"{system_instruction}\n\nUser question: {text}",
+            },
             timeout=45,
         )
         if resp.status_code != 200:
@@ -269,18 +273,17 @@ Answer the question thoroughly and comprehensively. Be as helpful and detailed a
             return _fallback_reason(normalized, text)
 
         data = resp.json()
-        candidates = data.get("candidates", [])
-        if not candidates:
-            logger.warning("Gemini returned no candidates: %s", json.dumps(data)[:500])
-            return _fallback_reason(normalized, text)
-
-        parts = candidates[0].get("content", {}).get("parts", [])
-        text_parts = [p.get("text", "") for p in parts if "text" in p]
+        steps = data.get("steps", [])
+        text_parts = []
+        for step in steps:
+            for content in step.get("content", []):
+                if content.get("type") == "text" and content.get("text"):
+                    text_parts.append(content["text"])
 
         if text_parts:
             return "\n".join(text_parts).strip()
 
-        logger.warning("Gemini returned no text parts: %s", json.dumps(data)[:500])
+        logger.warning("Gemini returned no text steps: %s", json.dumps(data)[:500])
         return _fallback_reason(normalized, text)
 
     except httpx.TimeoutException:

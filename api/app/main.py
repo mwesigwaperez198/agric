@@ -79,15 +79,16 @@ def health():
 
 
 @app.get("/debug/gemini")
-def debug_gemini(model: str = "gemini-flash-latest"):
+def debug_gemini(model: str = "gemini-2.5-flash"):
     import httpx
     if not settings.gemini_api_key:
         return {"error": "No GEMINI_API_KEY set"}
     try:
         resp = httpx.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}",
-            json={"contents": [{"role": "user", "parts": [{"text": "Say hello in 5 words"}]}], "generation_config": {"max_output_tokens": 50}},
-            timeout=15,
+            "https://generativelanguage.googleapis.com/v1beta2/interactions",
+            headers={"x-goog-api-key": settings.gemini_api_key, "Content-Type": "application/json"},
+            json={"model": model, "input": "Say hello in 5 words"},
+            timeout=30,
         )
         return {"model": model, "status": resp.status_code, "body": resp.text[:500]}
     except Exception as e:
