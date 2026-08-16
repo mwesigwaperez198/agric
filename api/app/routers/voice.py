@@ -138,30 +138,39 @@ def _reason(text: str, crop_type: str, history: list[dict], user_name: str) -> s
 
     import httpx
 
-    system_prompt = f"""You are NOVA — a friendly, simple agricultural assistant for Ugandan farmers.
+    system_prompt = f"""You are NOVA — a smart, conversational AI assistant for Ugandan farmers.
 
-You speak like a helpful neighbor who knows farming well. You give practical, easy-to-follow advice.
+THINK LIKE A HUMAN, NOT A TEXTBOOK. When someone asks a question, figure out what they REALLY want to know, even if they misspell words, use wrong vocabulary, or ask in a confusing way.
 
-USER: {user_name}
-CROP CONTEXT: {crop_type}
+YOU ARE LIKE GOOGLE ASSISTANT:
+- If someone says "how to grow beans am not getting good yeilds" — understand they want to improve bean yields
+- If someone says "my kafifi is dying" — understand kafifi means coffee and help with that
+- If someone says "when do I put the seed in the ground for maize" — understand they mean planting season
+- If someone says "the insects are eating my plants" — help identify and treat pest problems
+- If someone types in Luganda, Swahili, or any local language — answer in English (translation happens later)
+- Handle misspellings, broken English, and informal speech naturally
 
-RULES:
-- Answer ANY farming question directly — crops, animals, soil, weather, market, money, tools, anything
-- Be specific to Uganda: local varieties, UGX prices, Ugandan institutions (NARO, UCDA, NAADS)
-- Use simple language a farmer can understand — no jargon
-- Give step-by-step actions they can do TODAY
-- If the question is in a local language (Luganda, Swahili, etc.), answer in English — translation happens later
-- Always be helpful. Never say "tell me more specifically" — just answer what they asked
-- Keep answers concise: 3-6 sentences for simple questions, longer for complex ones
+STYLE:
+- Talk like a knowledgeable friend, not a textbook
+- Be warm and encouraging — farming is hard work
+- Use simple, everyday language
+- Give practical steps they can follow TODAY
+- Mention specific products, shops, and prices in UGX when relevant
+- If you're not sure about something, say so honestly — don't make things up
+- Keep it concise: short paragraphs, not walls of text
+- End with ONE actionable thing they can do right now
 
-UGANDAN FARMING QUICK REFERENCE:
-- Coffee: Ruiru 11, NARO 1 varieties; spray copper for rust
+UGANDAN AGRICULTURE:
+- Coffee: Ruiru 11, NARO 1; spray copper for rust; pick only red cherries
 - Maize: Longe 5, KH 600-23A; plant March & September; NPK at planting, CAN at 6 weeks
 - Beans: NARO Bean 1, K131; intercrop with maize; 25kg/ha seed rate
 - Banana: Matooke, Beer bananas; mulch with banana leaves
 - Livestock: deworm every 3 months, vaccinate against FMD
 - Seasons: Bimodal — Mar-May (first), Sept-Nov (second)
 - Key orgs: NARO, UCDA, NAADS, UCA, Makerere University
+
+USER: {user_name}
+CROP CONTEXT: {crop_type}
 """
 
     messages = [{"role": "system", "content": system_prompt}]
@@ -183,115 +192,92 @@ UGANDAN FARMING QUICK REFERENCE:
 def _fallback_reason(text: str, crop_type: str) -> str:
     lowered = text.lower()
 
-    if "maize" in lowered or "corn" in lowered or "simb" in lowered:
+    if "maize" in lowered or "corn" in lowered or "simb" in lowered or "posho" in lowered:
         return (
-            "How to plant maize in Uganda:\n\n"
-            "1. VARIETY: Use Longe 5 or KH 600-23A (available from NAADS or KADP)\n"
-            "2. TIMING: Plant in March (first season) or September (second season)\n"
-            "3. LAND PREP: Plough twice, harrow once, make ridges 90cm apart\n"
-            "4. SEED RATE: 25 kg/ha (about 500g per 10m row)\n"
-            "5. PLANTING: 2 seeds per hole, 30cm apart, 5cm deep\n"
-            "6. FERTILIZER: Apply NPK 17:17:17 at 4g per hole at planting. "
-            "Side-dress with CAN at 6 weeks after emergence\n"
-            "7. WEEDING: Weed at 3 weeks and 6 weeks after planting\n"
-            "8. HARVEST: 3-4 months after planting when leaves turn brown\n\n"
-            "What you can do right now: If you haven't planted yet, prepare your land "
-            "and buy seed from an NAADS stockist this week."
+            "To grow maize in Uganda, here's what works:\n\n"
+            "Plant Longe 5 or KH 600-23A seeds during the March or September rains. "
+            "Prepare your land well — plough twice, make ridges 90cm apart. "
+            "Put 2 seeds per hole, 30cm apart, 5cm deep. Use NPK at planting and CAN at 6 weeks.\n\n"
+            "Weed at 3 and 6 weeks. Harvest in 3-4 months when leaves turn brown.\n\n"
+            "Start now: buy seed from an NAADS stockist and prepare your land this week."
         )
 
-    if "coffee" in lowered:
-        if "rust" in lowered or "leaf" in lowered:
+    if "coffee" in lowered or "kawa" in lowered or "kafifi" in lowered:
+        if "rust" in lowered or "leaf" in lowered or "yellow" in lowered or "spot" in lowered:
             return (
-                "Coffee leaf rust treatment:\n\n"
-                "1. Spray Blue Shield (copper hydroxide) at 3g/L water — do it today\n"
-                "2. Remove and burn badly infected leaves\n"
-                "3. Prune low branches to 50cm above ground\n"
-                "4. Plant Ruiru 11 or NARO 1 next season (rust-resistant)\n"
-                "5. Apply 100g N/tree split across both rain seasons\n\n"
-                "Available at: NAADS, UCA cooperative shops, or any agro-dealer.\n"
-                "Reference: NARO Coffee Research Station, Mukono."
+                "Those yellow spots on your coffee leaves sound like coffee leaf rust. "
+                "It's common during the rainy seasons.\n\n"
+                "What to do right now:\n"
+                "1. Spray Blue Shield (copper hydroxide) at 3g/L water — today if possible\n"
+                "2. Remove and burn leaves with many spots\n"
+                "3. Prune low branches to about 50cm above ground\n\n"
+                "For next season, plant Ruiru 11 or NARO 1 — they resist rust. "
+                "Apply 100g N/tree split across both rain seasons.\n\n"
+                "Find Blue Shield at NAADS, UCA shops, or any agro-dealer."
             )
         return (
-            "Coffee farming in Uganda:\n\n"
-            "1. VARIETY: Bugisu Arabica (1200-2000m altitude) or Robusta (below 1200m)\n"
-            "2. PLANTING: 3m x 3m spacing, 2 seeds per hole, mulch with grass\n"
-            "3. SHADE: Plant with shade trees (Erythrina or Calliandra)\n"
-            "4. FERTILIZER: 100g N/tree per year, split into two applications\n"
-            "5. PEST CONTROL: Spray copper-based fungicide for rust every 6 weeks\n"
-            "6. HARVEST: Pick only red cherries, process within 24 hours\n\n"
-            "What you can do right now: Walk through your coffee garden and check "
-            "for orange spots on the underside of leaves (sign of rust)."
+            "For coffee in Uganda, here's the basics:\n\n"
+            "Use Bugisu Arabica (if you're above 1200m) or Robusta (below 1200m). "
+            "Plant 3m x 3m apart, with shade trees like Erythrina. "
+            "Mulch with grass, apply 100g N/tree per year.\n\n"
+            "Spray copper fungicide every 6 weeks for rust. "
+            "Pick only red cherries and process within 24 hours.\n\n"
+            "Walk through your garden today and check for orange spots on leaf undersides — "
+            "that's the first sign of rust."
         )
 
-    if "bean" in lowered or "njugu" in lowered:
+    if "bean" in lowered or "njugu" in lowered or "nkwology" in lowered:
         return (
-            "Bean farming in Uganda:\n\n"
-            "1. VARIETY: NARO Bean 1, K131, or Masooma (available from NAADS)\n"
-            "2. TIMING: Plant March or August\n"
-            "3. SEED RATE: 80-100 kg/ha (about 2kg per 10m row)\n"
-            "4. INOCULANT: Treat seed with Rhizobium inoculant before planting\n"
-            "5. SPACING: 50cm between rows, 20cm between plants, 2 seeds per hole\n"
-            "6. FERTILIZER: DAP at planting (100kg/ha)\n"
-            "7. HARVEST: 2-3 months, dry to 13% moisture before storage\n\n"
-            "Tip: Interrow with maize for better land use and higher income."
+            "For beans in Uganda, NARO Bean 1 or K131 work well. "
+            "Plant in March or August, about 2 seeds per hole, 20cm apart.\n\n"
+            "Use DAP at planting (about 100kg/ha). "
+            "Inoculate seed with Rhizobium for better yields. "
+            "Interrow with maize for better land use.\n\n"
+            "Harvest in 2-3 months. Dry to 13% moisture before storing."
         )
 
     if "chicken" in lowered or "poultry" in lowered or "nkoko" in lowered:
         return (
-            "Poultry farming in Uganda:\n\n"
-            "1. START: Buy 50 chicks from a certified hatchery (Inamas, NAADS)\n"
-            "2. HOUSING: Chicken run (4 sq ft per bird), wire mesh floor\n"
-            "3. FEED: Starter feed (0-8 weeks), Grower (8-20 weeks), Layer mash (20+ weeks)\n"
-            "4. WATER: Clean water always available, add electrolytes during heat\n"
-            "5. VACCINATION: Mareks (day 1), Newcastle (week 2, 6, 12), Deworm monthly\n"
-            "6. EGG COLLECTION: Twice daily, store in cool place\n\n"
-            "Earnings: 1 layer = 250-300 eggs/year = UGX 250,000-300,000 revenue."
+            "For poultry in Uganda, start with 50 chicks from a certified hatchery like Inamas. "
+            "Give them starter feed for 8 weeks, then grower feed.\n\n"
+            "House them in a chicken run with wire mesh floor. "
+            "Vaccinate for Mareks (day 1), Newcastle (weeks 2, 6, 12), and deworm monthly.\n\n"
+            "One layer gives about 250 eggs/year — that's UGX 250,000-300,000 revenue."
         )
 
     if "weather" in lowered or "rain" in lowered or "season" in lowered:
         return (
-            "Uganda farming seasons:\n\n"
-            "FIRST SEASON: March - May (long rains, best for planting)\n"
-            "DRY SEASON: June - August (harvesting, land preparation)\n"
-            "SECOND SEASON: September - November (short rains, second planting)\n"
-            "HOT SEASON: December - February (harvesting, drying crops)\n\n"
-            "Tip: Always plant at the start of rains, not during heavy rain. "
-            "Check NAADS forecasts before planting."
+            "Uganda has two planting seasons:\n\n"
+            "First season: March to May — best for most crops\n"
+            "Second season: September to November — good for beans and maize\n\n"
+            "Always plant at the start of rains, not during heavy rain. "
+            "Check NAADS forecasts before you plant."
         )
 
-    if "price" in lowered or "market" in lowered or "sell" in lowered:
+    if "price" in lowered or "market" in lowered or "sell" in lowered or "how much" in lowered:
         return (
-            "Selling your produce in Uganda:\n\n"
-            "1. LOCAL MARKETS: Sell directly to LCI/parish markets for best price\n"
-            "2. COOPERATIVES: Join UCA (coffee), UNFI (beans), or district cooperatives\n"
-            "3. NAADS: Register for market linkage support\n"
-            "4. CONVERSION: Add value — dry beans, roast coffee, make flour\n"
-            "5. STORAGE: Use hermetic bags (PICS) to store and sell when prices rise\n\n"
-            "Tip: Prices are highest 2-3 months after harvest when supply drops."
+            "To get the best prices for your produce:\n\n"
+            "Sell directly at local markets — you cut out middlemen. "
+            "Join a cooperative like UCA for coffee or UNFI for beans. "
+            "Add value by drying, roasting, or making flour.\n\n"
+            "Store in hermetic bags (PICS) and sell 2-3 months after harvest when supply drops."
         )
 
-    if "soil" in lowered or "fertiliz" in lowered or "compost" in lowered:
+    if "soil" in lowered or "fertiliz" in lowered or "compost" in lowered or "manure" in lowered:
         return (
-            "Soil management in Uganda:\n\n"
-            "1. TEST: Get soil tested at Makerere University (UGX 50,000)\n"
-            "2. ORGANIC: Make compost from farm waste (2 months to decompose)\n"
-            "3. NPK: Use 17:17:17 for most crops, apply at planting\n"
-            "4. CAN: Top-dress with CAN at 6 weeks for maize, beans\n"
-            "5. ROTATION: Rotate crops — maize → beans → groundnuts\n"
-            "6. MULCH: Cover soil with banana leaves, grass, or crop residues\n\n"
-            "Tip: Healthy soil = healthy crops. Start composting today."
+            "For healthy soil in Uganda:\n\n"
+            "Get your soil tested at Makerere University (about UGX 50,000). "
+            "Use NPK 17:17:17 for most crops at planting, CAN for top-dressing.\n\n"
+            "Make compost from farm waste — it takes about 2 months. "
+            "Rotate crops: maize, then beans, then groundnuts.\n\n"
+            "Start composting today — it's free fertilizer."
         )
 
     return (
-        f"Here's what I know about {text[:80]}:\n\n"
-        "I can help you with:\n"
-        "- Crop farming (coffee, maize, beans, banana, cassava)\n"
-        "- Livestock (chickens, goats, cattle)\n"
-        "- Soil and fertilizer advice\n"
-        "- Market prices and selling\n"
-        "- Weather and seasons\n"
-        "- Pest and disease control\n\n"
-        "Ask me anything specific about farming in Uganda!"
+        f"I understand you're asking about: {text[:100]}\n\n"
+        "I can help with farming in Uganda — crops, livestock, soil, weather, "
+        "market prices, pest control, and more.\n\n"
+        "Tell me more about what you need help with, and I'll give you practical advice."
     )
 
 

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from api.app.deps import AnyRole, CurrentUser, DbSession, FarmerOnly
 from api.app.models import Farm, User
@@ -30,6 +30,12 @@ def my_wallet(user: CurrentUser, db: DbSession):
 @router.get("/farms", response_model=list[FarmOut])
 def list_my_farms(user: CurrentUser, db: DbSession):
     return db.query(Farm).filter(Farm.owner_id == user.id).all()
+
+
+@router.get("/farms/all", response_model=list[FarmOut])
+def list_all_farms(db: DbSession, limit: int = Query(default=20, le=100)):
+    """Public endpoint — list all farms for consumers to browse."""
+    return db.query(Farm).limit(limit).all()
 
 
 @router.post("/farms", response_model=FarmOut, status_code=status.HTTP_201_CREATED)
