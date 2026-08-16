@@ -234,7 +234,7 @@ Context: {crop_type} farming in Uganda"""
     payload = {
         "system_instruction": {"parts": [{"text": system_instruction}]},
         "contents": contents,
-        "tools": [{"google_search_retrieval": {}}],
+        "tools": [{"googleSearch": {}}],
         "generation_config": {
             "temperature": 0.7,
             "max_output_tokens": 800,
@@ -243,7 +243,7 @@ Context: {crop_type} farming in Uganda"""
 
     try:
         resp = httpx.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={settings.gemini_api_key}",
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}",
             json=payload,
             timeout=30,
         )
