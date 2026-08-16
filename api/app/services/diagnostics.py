@@ -12,9 +12,12 @@ Input images are validated before reaching any model.
 import hashlib
 import io
 import json
+import logging
 import os
 import struct
 from typing import BinaryIO
+
+logger = logging.getLogger(__name__)
 
 from api.app.config import settings
 from api.app.services.guardrails import DEFAULT_RESPONSE, is_agri_query
@@ -271,11 +274,21 @@ def diagnose(data: bytes, crop_type: str, note: str | None = None) -> tuple[dict
     provider = settings.vision_provider.lower()
 
     if provider in ("gemini", "auto") and settings.gemini_api_key:
-        return gemini_diagnose(data, crop_type, note), "gemini-2.0-flash"
+        try:
+            return gemini_diagnose(data, crop_type, note), "gemini-2.5-flash"
+        except Exception as e:
+            logger.error("Gemini vision failed: %s — falling back", e)
     if provider in ("openai", "auto") and settings.whisper_api_key:
-        return openai_diagnose(data, crop_type, note), "gpt-4o-vision"
+        try:
+            return openai_diagnose(data, crop_type, note), "gpt-4o-vision"
+        except Exception as e:
+            logger.error("OpenAI vision failed: %s — falling back", e)
     if provider == "anthropic" and settings.whisper_api_key:
-        return anthropic_diagnose(data, crop_type, note), "claude-3-5-sonnet"
+        try:
+            return anthropic_diagnose(data, crop_type, note), "claude-3-5-sonnet"
+        except Exception as e:
+            logger.error("Anthropic vision failed: %s — falling back", e)
+
     return mock_diagnose(data, crop_type), "mock-cnn"
 
 

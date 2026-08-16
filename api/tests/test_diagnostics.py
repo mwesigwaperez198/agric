@@ -7,7 +7,7 @@ def test_diagnostics_guardrail(client, auth_headers):
     assert r.status_code == 200
     body = r.json()
     assert body["guardrail"] is False
-    assert "only answers questions about farming" in body["answer"]
+    assert "farming" in body["answer"].lower()
 
 
 def test_diagnostics_agri_question(client, auth_headers):

@@ -1,8 +1,12 @@
+import json
+import logging
 import re
 import unicodedata
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 from api.app.deps import CurrentUser, DbSession
 from api.app.models.chat import ChatMessage
@@ -203,27 +207,41 @@ def _reason(text: str, crop_type: str, history: list[dict], user_name: str) -> s
     normalized = _normalize(text)
 
     if not settings.gemini_api_key:
+        logger.warning("No GEMINI_API_KEY configured — using fallback")
         return _fallback_reason(normalized, text)
 
     import httpx
 
-    system_instruction = f"""You are NOVA, a friendly and smart agricultural assistant for farmers in Uganda.
+    system_instruction = f"""You are NOVA, an expert AI farming assistant for Ugandan farmers. You are as knowledgeable as Google Assistant and as friendly as Meta AI.
 
-CORE RULES:
-- You understand ANY question, even with misspellings, broken English, or local language words
-- Greet back warmly if greeted — "Hi! I'm NOVA..." and ask how you can help
-- Give direct, practical answers. Never say "tell me more" — just answer
-- Talk like a helpful neighbor, not a textbook
-- Be warm and encouraging
-- Use everyday language a farmer understands
-- Give specific steps, local varieties, UGX prices when you know them
-- Use Google Search to find current market prices, weather forecasts, and local supplier info
-- End with ONE thing they can do right now
-- If you don't know something specific, give your best general guidance and be honest
-- Always answer in English (translation happens after)
+PERSONALITY:
+- Warm, encouraging, and patient — like a knowledgeable friend who is also an agronomist
+- Use simple English that any farmer can understand
+- You understand misspellings, broken English, and local language words (Luganda, Swahili, Acholi, Runyankore)
+- Greet back warmly when greeted — say hi, use their name, ask how you can help
+
+RESPONSE STYLE — comprehensive like Google Assistant or Meta AI:
+- Give THOROUGH, well-structured answers — not one-liners
+- Use bullet points and clear paragraphs for readability
+- Include specific details: UGX prices, product names, exact dosages, variety names, step-by-step instructions
+- When you know current market prices or weather, share them (use Google Search)
+- Cover the topic fully: what it is, why it matters, what to do, what products to use, where to buy them, how much they cost
+- Include both immediate actions AND long-term strategies
+- Mention specific Ugandan institutions when relevant (NAADS, NARO, UCDA, district agricultural offices, Makerere University)
+- End with a clear, actionable next step
+
+UGANDA AGRICULTURE QUICK FACTS:
+- Two rain seasons: March-May (first), September-November (second)
+- Key crops: coffee (Arabica above 1200m, Robusta below), maize, beans, bananas (matooke), cassava, tea, vanilla
+- Common varieties: Ruiru 11, NARO 1 (coffee), Longe 5, KH 600-23A (maize), NARO Bean 1, K131 (beans), NAROCASS 1 (cassava)
+- Prices in UGX: coffee cherry 1,000-3,000/kg, maize grain 800-1,500/kg, beans 2,500-4,000/kg
+- Key products: Blue Shield (copper fungicide), NPK 17:17:17, CAN, DAP, Ridomil Gold, Albendazole (dewormer)
+- Institutions: NAADS (extension), NARO (research), UCDA (coffee), district agricultural offices
 
 User: {user_name}
-Context: {crop_type} farming in Uganda"""
+Primary crop: {crop_type}
+
+Answer the question thoroughly and comprehensively. Be as helpful and detailed as Google Assistant."""
 
     contents = []
     for msg in history[-6:]:
@@ -237,7 +255,7 @@ Context: {crop_type} farming in Uganda"""
         "tools": [{"googleSearch": {}}],
         "generation_config": {
             "temperature": 0.7,
-            "max_output_tokens": 800,
+            "max_output_tokens": 1500,
         },
     }
 
@@ -245,19 +263,33 @@ Context: {crop_type} farming in Uganda"""
         resp = httpx.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}",
             json=payload,
-            timeout=30,
+            timeout=45,
         )
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            logger.error("Gemini API error %d: %s", resp.status_code, resp.text[:500])
+            return _fallback_reason(normalized, text)
+
         data = resp.json()
         candidates = data.get("candidates", [])
-        if candidates:
-            parts = candidates[0].get("content", {}).get("parts", [])
-            if parts:
-                return parts[0].get("text", "").strip()
-    except Exception:
-        pass
+        if not candidates:
+            logger.warning("Gemini returned no candidates: %s", json.dumps(data)[:500])
+            return _fallback_reason(normalized, text)
 
-    return _fallback_reason(normalized, text)
+        parts = candidates[0].get("content", {}).get("parts", [])
+        text_parts = [p.get("text", "") for p in parts if "text" in p]
+
+        if text_parts:
+            return "\n".join(text_parts).strip()
+
+        logger.warning("Gemini returned no text parts: %s", json.dumps(data)[:500])
+        return _fallback_reason(normalized, text)
+
+    except httpx.TimeoutException:
+        logger.error("Gemini API timeout for query: %s", text[:100])
+        return _fallback_reason(normalized, text)
+    except Exception as e:
+        logger.error("Gemini API exception: %s", e)
+        return _fallback_reason(normalized, text)
 
 
 def _fallback_reason(normalized: str, original: str) -> str:
