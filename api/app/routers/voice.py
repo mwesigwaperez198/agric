@@ -1,3 +1,6 @@
+import re
+import unicodedata
+
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
@@ -26,7 +29,6 @@ async def transcribe_audio(
     db: DbSession,
     file: UploadFile = File(...),
 ):
-    """Transcribe audio with auto language detection."""
     data = await file.read()
     try:
         result = transcribe(data)
@@ -63,7 +65,6 @@ def voice_chat(
     db: DbSession,
     background_tasks: BackgroundTasks,
 ):
-    """Full AI chat: detect language → translate → reason → translate back → store."""
     from api.app.services.guardrails import guard_query
 
     user_text = body.text.strip()
@@ -75,8 +76,8 @@ def voice_chat(
 
     passed, blocked = guard_query(english_text)
     if not passed:
-        _store_message(db, user.id, "user", user_text, user_lang)
-        _store_message(db, user.id, "assistant", blocked, user_lang)
+        _store_message(db, user.id, user_text, "user", user_lang)
+        _store_message(db, user.id, blocked, "assistant", user_lang)
         return VoiceQueryOut(answer=blocked, guardrail=False, dialect=user_lang)
 
     history = _get_history(db, user.id, limit=10)
@@ -103,187 +104,8 @@ def voice_chat(
     )
 
 
-def _get_history(db: DbSession, user_id: int, limit: int = 10) -> list[dict]:
-    rows = (
-        db.query(ChatMessage)
-        .filter(ChatMessage.user_id == user_id)
-        .order_by(ChatMessage.created_at.desc())
-        .limit(limit)
-        .all()
-    )
-    rows.reverse()
-    return [{"role": m.role, "content": m.content} for m in rows]
-
-
-def _store_message(db: DbSession, user_id: int, content: str, role: str, lang: str = "en"):
-    msg = ChatMessage(user_id=user_id, role=role, content=content, language=lang)
-    db.add(msg)
-    db.commit()
-
-
-def _store_messages_bg(db, user_id, user_text, answer_en, user_lang):
-    try:
-        _store_message(db, user_id, user_text, "user", user_lang)
-        _store_message(db, user_id, answer_en, "assistant", user_lang)
-    except Exception:
-        pass
-
-
-def _reason(text: str, crop_type: str, history: list[dict], user_name: str) -> str:
-    """GPT-4o reasoning engine with conversation memory."""
-    from api.app.config import settings
-
-    if not settings.whisper_api_key:
-        return _fallback_reason(text, crop_type)
-
-    import httpx
-
-    system_prompt = f"""You are NOVA — a smart, conversational AI assistant for Ugandan farmers.
-
-THINK LIKE A HUMAN, NOT A TEXTBOOK. When someone asks a question, figure out what they REALLY want to know, even if they misspell words, use wrong vocabulary, or ask in a confusing way.
-
-YOU ARE LIKE GOOGLE ASSISTANT:
-- If someone says "how to grow beans am not getting good yeilds" — understand they want to improve bean yields
-- If someone says "my kafifi is dying" — understand kafifi means coffee and help with that
-- If someone says "when do I put the seed in the ground for maize" — understand they mean planting season
-- If someone says "the insects are eating my plants" — help identify and treat pest problems
-- If someone types in Luganda, Swahili, or any local language — answer in English (translation happens later)
-- Handle misspellings, broken English, and informal speech naturally
-
-STYLE:
-- Talk like a knowledgeable friend, not a textbook
-- Be warm and encouraging — farming is hard work
-- Use simple, everyday language
-- Give practical steps they can follow TODAY
-- Mention specific products, shops, and prices in UGX when relevant
-- If you're not sure about something, say so honestly — don't make things up
-- Keep it concise: short paragraphs, not walls of text
-- End with ONE actionable thing they can do right now
-
-UGANDAN AGRICULTURE:
-- Coffee: Ruiru 11, NARO 1; spray copper for rust; pick only red cherries
-- Maize: Longe 5, KH 600-23A; plant March & September; NPK at planting, CAN at 6 weeks
-- Beans: NARO Bean 1, K131; intercrop with maize; 25kg/ha seed rate
-- Banana: Matooke, Beer bananas; mulch with banana leaves
-- Livestock: deworm every 3 months, vaccinate against FMD
-- Seasons: Bimodal — Mar-May (first), Sept-Nov (second)
-- Key orgs: NARO, UCDA, NAADS, UCA, Makerere University
-
-USER: {user_name}
-CROP CONTEXT: {crop_type}
-"""
-
-    messages = [{"role": "system", "content": system_prompt}]
-    for msg in history:
-        role = "assistant" if msg["role"] == "assistant" else "user"
-        messages.append({"role": role, "content": msg["content"]})
-    messages.append({"role": "user", "content": text})
-
-    resp = httpx.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {settings.whisper_api_key}"},
-        json={"model": "gpt-4o", "max_tokens": 1500, "temperature": 0.7, "messages": messages},
-        timeout=60,
-    )
-    resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"]
-
-
-def _fallback_reason(text: str, crop_type: str) -> str:
-    lowered = text.lower()
-
-    if "maize" in lowered or "corn" in lowered or "simb" in lowered or "posho" in lowered:
-        return (
-            "To grow maize in Uganda, here's what works:\n\n"
-            "Plant Longe 5 or KH 600-23A seeds during the March or September rains. "
-            "Prepare your land well — plough twice, make ridges 90cm apart. "
-            "Put 2 seeds per hole, 30cm apart, 5cm deep. Use NPK at planting and CAN at 6 weeks.\n\n"
-            "Weed at 3 and 6 weeks. Harvest in 3-4 months when leaves turn brown.\n\n"
-            "Start now: buy seed from an NAADS stockist and prepare your land this week."
-        )
-
-    if "coffee" in lowered or "kawa" in lowered or "kafifi" in lowered:
-        if "rust" in lowered or "leaf" in lowered or "yellow" in lowered or "spot" in lowered:
-            return (
-                "Those yellow spots on your coffee leaves sound like coffee leaf rust. "
-                "It's common during the rainy seasons.\n\n"
-                "What to do right now:\n"
-                "1. Spray Blue Shield (copper hydroxide) at 3g/L water — today if possible\n"
-                "2. Remove and burn leaves with many spots\n"
-                "3. Prune low branches to about 50cm above ground\n\n"
-                "For next season, plant Ruiru 11 or NARO 1 — they resist rust. "
-                "Apply 100g N/tree split across both rain seasons.\n\n"
-                "Find Blue Shield at NAADS, UCA shops, or any agro-dealer."
-            )
-        return (
-            "For coffee in Uganda, here's the basics:\n\n"
-            "Use Bugisu Arabica (if you're above 1200m) or Robusta (below 1200m). "
-            "Plant 3m x 3m apart, with shade trees like Erythrina. "
-            "Mulch with grass, apply 100g N/tree per year.\n\n"
-            "Spray copper fungicide every 6 weeks for rust. "
-            "Pick only red cherries and process within 24 hours.\n\n"
-            "Walk through your garden today and check for orange spots on leaf undersides — "
-            "that's the first sign of rust."
-        )
-
-    if "bean" in lowered or "njugu" in lowered or "nkwology" in lowered:
-        return (
-            "For beans in Uganda, NARO Bean 1 or K131 work well. "
-            "Plant in March or August, about 2 seeds per hole, 20cm apart.\n\n"
-            "Use DAP at planting (about 100kg/ha). "
-            "Inoculate seed with Rhizobium for better yields. "
-            "Interrow with maize for better land use.\n\n"
-            "Harvest in 2-3 months. Dry to 13% moisture before storing."
-        )
-
-    if "chicken" in lowered or "poultry" in lowered or "nkoko" in lowered:
-        return (
-            "For poultry in Uganda, start with 50 chicks from a certified hatchery like Inamas. "
-            "Give them starter feed for 8 weeks, then grower feed.\n\n"
-            "House them in a chicken run with wire mesh floor. "
-            "Vaccinate for Mareks (day 1), Newcastle (weeks 2, 6, 12), and deworm monthly.\n\n"
-            "One layer gives about 250 eggs/year — that's UGX 250,000-300,000 revenue."
-        )
-
-    if "weather" in lowered or "rain" in lowered or "season" in lowered:
-        return (
-            "Uganda has two planting seasons:\n\n"
-            "First season: March to May — best for most crops\n"
-            "Second season: September to November — good for beans and maize\n\n"
-            "Always plant at the start of rains, not during heavy rain. "
-            "Check NAADS forecasts before you plant."
-        )
-
-    if "price" in lowered or "market" in lowered or "sell" in lowered or "how much" in lowered:
-        return (
-            "To get the best prices for your produce:\n\n"
-            "Sell directly at local markets — you cut out middlemen. "
-            "Join a cooperative like UCA for coffee or UNFI for beans. "
-            "Add value by drying, roasting, or making flour.\n\n"
-            "Store in hermetic bags (PICS) and sell 2-3 months after harvest when supply drops."
-        )
-
-    if "soil" in lowered or "fertiliz" in lowered or "compost" in lowered or "manure" in lowered:
-        return (
-            "For healthy soil in Uganda:\n\n"
-            "Get your soil tested at Makerere University (about UGX 50,000). "
-            "Use NPK 17:17:17 for most crops at planting, CAN for top-dressing.\n\n"
-            "Make compost from farm waste — it takes about 2 months. "
-            "Rotate crops: maize, then beans, then groundnuts.\n\n"
-            "Start composting today — it's free fertilizer."
-        )
-
-    return (
-        f"I understand you're asking about: {text[:100]}\n\n"
-        "I can help with farming in Uganda — crops, livestock, soil, weather, "
-        "market prices, pest control, and more.\n\n"
-        "Tell me more about what you need help with, and I'll give you practical advice."
-    )
-
-
 @router.post("/text-chat", response_model=VoiceQueryOut)
 def text_chat(body: TextChatRequest, user: CurrentUser, db: DbSession, background_tasks: BackgroundTasks):
-    """Text-based AI chat with full reasoning and conversation memory."""
     from api.app.services.guardrails import guard_query
 
     user_text = body.text.strip()
@@ -322,7 +144,6 @@ def text_chat(body: TextChatRequest, user: CurrentUser, db: DbSession, backgroun
 
 @router.get("/history")
 def get_chat_history(user: CurrentUser, db: DbSession, limit: int = 50):
-    """Get conversation history for the current user."""
     rows = (
         db.query(ChatMessage)
         .filter(ChatMessage.user_id == user.id)
@@ -341,3 +162,371 @@ def get_chat_history(user: CurrentUser, db: DbSession, limit: int = 50):
         }
         for m in rows
     ]
+
+
+def _get_history(db: DbSession, user_id: int, limit: int = 10) -> list[dict]:
+    rows = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.user_id == user_id)
+        .order_by(ChatMessage.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    rows.reverse()
+    return [{"role": m.role, "content": m.content} for m in rows]
+
+
+def _store_message(db: DbSession, user_id: int, content: str, role: str, lang: str = "en"):
+    msg = ChatMessage(user_id=user_id, role=role, content=content, language=lang)
+    db.add(msg)
+    db.commit()
+
+
+def _store_messages_bg(db, user_id, user_text, answer_en, user_lang):
+    try:
+        _store_message(db, user_id, user_text, "user", user_lang)
+        _store_message(db, user_id, answer_en, "assistant", user_lang)
+    except Exception:
+        pass
+
+
+def _normalize(text: str) -> str:
+    text = text.lower().strip()
+    text = unicodedata.normalize("NFKD", text)
+    text = re.sub(r"[^a-z0-9\s]", "", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _reason(text: str, crop_type: str, history: list[dict], user_name: str) -> str:
+    from api.app.config import settings
+
+    normalized = _normalize(text)
+
+    if not settings.whisper_api_key:
+        return _fallback_reason(normalized, text)
+
+    import httpx
+
+    system_prompt = f"""You are NOVA, a friendly and smart agricultural assistant for farmers in Uganda.
+
+CORE RULES:
+- You understand ANY question, even with misspellings, broken English, or local language words
+- Greet back warmly if greeted — "Hi! I'm NOVA..." and ask how you can help
+- Give direct, practical answers. Never say "tell me more" — just answer
+- Talk like a helpful neighbor, not a textbook
+- Be warm and encouraging
+- Use everyday language a farmer understands
+- Give specific steps, local varieties, UGX prices when you know them
+- End with ONE thing they can do right now
+- If you don't know something specific, give your best general guidance and be honest
+
+UGANDA QUICK FACTS:
+- Seasons: Mar-May (first), Sept-Nov (second)
+- Coffee: Ruiru 11, NARO 1; copper spray for rust; 1200-2000m for Arabica
+- Maize: Longe 5, KH 600-23A; NPK at planting, CAN at 6 weeks
+- Beans: NARO Bean 1, K131; intercrop with maize
+- Banana: Matooke, beer bananas; mulch leaves
+- Cassava: NAROCASS 1, 14 months to harvest
+- Livestock: deworm every 3 months, FMD vaccine
+- Pruning: remove dead/sick branches, improve airflow, let light in
+- Fertilizer: NPK 17:17:17, CAN, DAP, compost
+- Pest control: neem spray, copper fungicide, wood ash for aphids
+
+User name: {user_name}"""
+
+    messages = [{"role": "system", "content": system_prompt}]
+    for msg in history[-6:]:
+        role = "assistant" if msg["role"] == "assistant" else "user"
+        messages.append({"role": role, "content": msg["content"]})
+    messages.append({"role": "user", "content": text})
+
+    try:
+        resp = httpx.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {settings.whisper_api_key}"},
+            json={"model": "gpt-4o-mini", "max_tokens": 800, "temperature": 0.7, "messages": messages},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"]
+    except Exception:
+        return _fallback_reason(normalized, text)
+
+
+def _fallback_reason(normalized: str, original: str) -> str:
+    # Greetings
+    if any(w in normalized for w in ["hello", "hi ", "hi!", "hey", "good morning", "good evening", "good afternoon", "nambye", "webale", "jambo"]):
+        return (
+            "Hello! I'm NOVA, your farming assistant. "
+            "I can help you with crops, livestock, soil, weather, market prices — anything about farming in Uganda. "
+            "What would you like to know?"
+        )
+
+    # Pruning
+    if "prun" in normalized or "cut" in normalized and ("branch" in normalized or "tree" in normalized):
+        return (
+            "Pruning depends on what you're growing. Here's a quick guide:\n\n"
+            "Coffee: Remove suckers below 50cm. Keep 2-3 main stems. Cut horizontal branches. "
+            "Best time: right after harvest.\n\n"
+            "Fruit trees (mango, avocado): Remove dead or crossing branches. "
+            "Cut at a 45-degree angle just above a bud. Open the center for light and air.\n\n"
+            "General rule: Use a sharp, clean knife or secateurs. Cut just above a bud or joint. "
+            "Remove dead, diseased, or crossing branches first. Don't remove more than 1/3 of the tree at once.\n\n"
+            "Start by walking through your garden and identifying any dead or diseased branches to remove today."
+        )
+
+    # Banana/plantain
+    if "banana" in normalized or "matooke" in normalized or "banna" in normalized or "banas" in normalized or "plantain" in normalized:
+        if "prun" in normalized or "cut" in normalized or "remove" in normalized:
+            return (
+                "For banana pruning:\n\n"
+                "Remove dead or yellow leaves first — they harbour pests. "
+                "Keep only 6-8 healthy leaves per mat. Remove excess suckers — keep one main stem and one follower. "
+                "Cut old stems after they finish fruiting.\n\n"
+                "Do this monthly. It improves airflow and reduces disease.\n\n"
+                "Go to your banana garden today and remove any completely dead leaves."
+            )
+        return (
+            "To grow bananas (matooke) in Uganda:\n\n"
+            "Plant disease-free suckers (15-20kg weight) during the rains. "
+            "Space 3m x 3m apart. Dig holes 60cm deep, mix with compost and topsoil.\n\n"
+            "Mulch heavily with banana leaves or grass — bananas love moisture. "
+            "Remove excess suckers regularly. Apply NPK at planting and top-dress every 3 months.\n\n"
+            "Harvest in 9-12 months when the fruit ridges fill out. "
+            "Popular varieties: Bogoya (sweet), Nakitembe (cooking), Beer bananas.\n\n"
+            "Start by getting good suckers from NAADS or a neighboring healthy plantation."
+        )
+
+    # Maize/corn
+    if any(w in normalized for w in ["maize", "corn", "posho", "simb", "wolimawo"]):
+        if "prun" in normalized or "thin" in normalized:
+            return (
+                "For maize, you don't prune — you thin. If seeds are too close, remove weaker seedlings "
+                "to leave one strong plant every 30cm. Do this at 2 weeks after emergence.\n\n"
+                "Also remove any suckers from the base if they appear."
+            )
+        if "harvest" in normalized or "pick" in normalized or "ready" in normalized:
+            return (
+                "Maize is ready to harvest when leaves turn brown and dry, about 3-4 months after planting. "
+                "Break a kernel — if it's hard and dents when pressed, it's ready.\n\n"
+                "Harvest in the morning, husk immediately, and dry on a raised platform for 5-7 days "
+                "until moisture is below 13%. Store in hermetic bags (PICS) to prevent weevils."
+            )
+        return (
+            "To grow maize in Uganda:\n\n"
+            "Plant Longe 5 or KH 600-23A during March or September rains. "
+            "Plough twice, make ridges 90cm apart. "
+            "Put 2 seeds per hole, 30cm apart, 5cm deep.\n\n"
+            "Use NPK 17:17:17 at planting (about 4g per hole). "
+            "Side-dress with CAN at 6 weeks after emergence. Weed at 3 and 6 weeks.\n\n"
+            "Harvest in 3-4 months when leaves turn brown.\n\n"
+            "Prepare your land and buy seed from an NAADS stockist this week."
+        )
+
+    # Coffee
+    if any(w in normalized for w in ["coffee", "kawa", "kafifi", "cafe"]):
+        if "rust" in normalized or "yellow" in normalized or "spot" in normalized or "disease" in normalized:
+            return (
+                "Those yellow/orange spots are coffee leaf rust. It's very common in Uganda's rainy seasons.\n\n"
+                "What to do now:\n"
+                "1. Spray Blue Shield (copper hydroxide) at 3g/L water — today\n"
+                "2. Remove and burn badly infected leaves\n"
+                "3. Prune low branches to 50cm above ground\n\n"
+                "For next season, plant Ruiru 11 or NARO 1 — they resist rust. "
+                "Apply 100g N/tree split across both rain seasons.\n\n"
+                "Get Blue Shield at NAADS, UCA shops, or any agro-dealer."
+            )
+        if "prun" in normalized or "cut" in normalized:
+            return (
+                "Coffee pruning tips:\n\n"
+                "Remove water shoots (vertical growing suckers) from the main stem. "
+                "Keep 2-3 main stems per tree. Remove branches below 50cm from the ground.\n\n"
+                "Cut at a 45-degree angle. Remove dead or crossing branches. "
+                "Best time: right after the main harvest.\n\n"
+                "Good pruning increases yield by 30-50% and makes spraying easier.\n\n"
+                "Walk through your coffee garden today and remove any water shoots you see."
+            )
+        return (
+            "For coffee in Uganda:\n\n"
+            "Use Bugisu Arabica above 1200m or Robusta below 1200m. "
+            "Plant 3m x 3m apart with shade trees (Erythrina, Calliandra). "
+            "Mulch with grass, apply 100g N/tree per year.\n\n"
+            "Spray copper fungicide every 6 weeks for rust. "
+            "Pick only red cherries and process within 24 hours.\n\n"
+            "Walk through your garden today and check leaf undersides for orange spots."
+        )
+
+    # Beans
+    if any(w in normalized for w in ["bean", "njugu", "nkwology", "lentil"]):
+        if "prun" in normalized or "thin" in normalized:
+            return (
+                "You don't prune beans. If they're too crowded, thin to 2 plants per station "
+                "when they're 2 weeks old. This gives each plant room to grow."
+            )
+        return (
+            "For beans in Uganda, use NARO Bean 1 or K131. "
+            "Plant in March or August — 2 seeds per hole, 20cm apart, rows 50cm apart.\n\n"
+            "Use DAP at planting (about 100kg/ha). Inoculate seed with Rhizobium for better yields. "
+            "Interrow with maize for better land use.\n\n"
+            "Harvest in 2-3 months. Dry to 13% moisture before storing."
+        )
+
+    # Chicken/poultry
+    if any(w in normalized for w in ["chicken", "poultry", "nkoko", "egg", "hen", "cock"]):
+        if "how much" in normalized or "price" in normalized or "cost" in normalized:
+            return (
+                "Chicken costs in Uganda:\n\n"
+                "Day-old chicks: UGX 3,000-5,000 each (Inamas, Uzima)\n"
+                "Grower feed: UGX 120,000-150,000 per 50kg bag\n"
+                "Layer mash: UGX 140,000-170,000 per 50kg bag\n"
+                "A full-grown local chicken: UGX 25,000-40,000\n"
+                "One layer produces 250-300 eggs/year at UGX 500-800 each\n\n"
+                "You can start with 50 chicks for about UGX 500,000 total investment."
+            )
+        return (
+            "For poultry in Uganda, start with 50 chicks from a certified hatchery like Inamas. "
+            "Give starter feed for 8 weeks, then grower feed.\n\n"
+            "House them with wire mesh floor, clean water always available. "
+            "Vaccinate: Mareks (day 1), Newcastle (weeks 2, 6, 12). Deworm monthly.\n\n"
+            "One layer gives about 250 eggs/year — UGX 250,000-300,000 revenue."
+        )
+
+    # Goats/cattle/livestock
+    if any(w in normalized for w in ["goat", "cattle", "cow", "cowp", "livestock", "animal", "farming animal"]):
+        if "prun" in normalized or "castrat" in normalized:
+            return (
+                "For livestock management:\n\n"
+                "Castrate male animals you don't want for breeding at 6 months. "
+                "This makes them calmer and improves meat quality.\n\n"
+                "Dehorn goats at 2-4 weeks using a hot iron or paste. "
+                "Remove any extra teats from goats at birth."
+            )
+        return (
+            "For livestock in Uganda:\n\n"
+            "Deworm every 3 months using Albendazole or Ivermectin. "
+            "Vaccinate against Foot and Mouth Disease (FMD) twice a year.\n\n"
+            "For goats: Small East African breed is hardy. "
+            "Give each goat 4-6 sq meters of shelter. Browse is their main feed.\n\n"
+            "For cattle: Ankole longhorn is heat-tolerant. "
+            "Supplement with Napier grass during dry season.\n\n"
+            "Take a dewormer to your animals this week."
+        )
+
+    # Cassava
+    if "cassava" in normalized or "muhogo" in normalized:
+        return (
+            "For cassava in Uganda:\n\n"
+            "Plant NAROCASS 1 or local varieties. Use stem cuttings 20cm long, "
+            "planted at 1m x 1m spacing.\n\n"
+            "Cassava is drought-tolerant but needs good drainage. "
+            "Harvest in 12-18 months. Test for Cassava Mosaic Disease — "
+            "if leaves have yellow patterns, remove affected plants.\n\n"
+            "Store roots in the ground until needed — they keep well for months."
+        )
+
+    # Fertilizer/soil/compost
+    if any(w in normalized for w in ["fertiliz", "soil", "compost", "manure", "nutrient", "npk", "can "]):
+        return (
+            "For soil health in Uganda:\n\n"
+            "Get your soil tested at Makerere University (about UGX 50,000). "
+            "Use NPK 17:17:17 at planting for most crops. "
+            "CAN for top-dressing maize and beans at 6 weeks.\n\n"
+            "Make compost: pile farm waste, add ash and animal manure, water regularly. "
+            "Ready in 2 months. Use 2-3 kg per planting hole.\n\n"
+            "Rotate crops: maize, then beans, then groundnuts.\n\n"
+            "Start a compost pile today — it's free fertilizer."
+        )
+
+    # Weather/season/rain
+    if any(w in normalized for w in ["weather", "rain", "season", "drought", "flood"]):
+        return (
+            "Uganda has two planting seasons:\n\n"
+            "First season: March to May — best for maize, beans, coffee\n"
+            "Second season: September to November — good for beans, maize, groundnuts\n\n"
+            "Plant at the start of rains, not during heavy downpour. "
+            "Check NAADS forecasts. During dry season, irrigate and mulch to conserve moisture.\n\n"
+            "Now is a good time to prepare your land for the next season."
+        )
+
+    # Harvest/storage
+    if any(w in normalized for w in ["harvest", "stor", "dry", "post-harvest"]):
+        return (
+            "Post-harvest tips for Uganda:\n\n"
+            "Dry crops to 13% moisture (maize: 5-7 days on raised platform). "
+            "Use hermetic bags (PICS) — they prevent weevils without chemicals.\n\n"
+            "Store in a cool, dry place off the ground. "
+            "Check weekly for moisture or insects.\n\n"
+            "Sell 2-3 months after harvest when market prices rise."
+        )
+
+    # Market/sell/price/money
+    if any(w in normalized for w in ["price", "market", "sell", "money", "cost", "buy", "how much", "worth"]):
+        return (
+            "To get the best prices:\n\n"
+            "Sell directly at local markets to cut out middlemen. "
+            "Join a cooperative (UCA for coffee, district cooperatives for other crops). "
+            "Add value — dry, roast, or mill your crops.\n\n"
+            "Store in PICS bags and sell 2-3 months after harvest when supply drops.\n\n"
+            "Visit your nearest market this week to compare prices."
+        )
+
+    # Water/irrigation
+    if any(w in normalized for w in ["water", "irrigat", "drip", "sprinkle"]):
+        return (
+            "For irrigation in Uganda:\n\n"
+            "Drip irrigation is most efficient — uses 60% less water than flood. "
+            "Simple DIY: use plastic bottles with small holes buried near plant roots.\n\n"
+            "Water early morning (6-8am) or evening (5-7pm). "
+            "Mulch heavily to reduce evaporation.\n\n"
+            "Rainwater harvesting: connect gutters to a tank. 1000L tank costs about UGX 800,000."
+        )
+
+    # Pest/insect/bug
+    if any(w in normalized for w in ["pest", "insect", "bug", "worm", "aphid", "locust", "beetle"]):
+        return (
+            "For pest control in Uganda:\n\n"
+            "Neem spray: crush 1kg neem leaves in 10L water, strain, spray on crops. "
+            "Works against aphids, caterpillars, and beetles.\n\n"
+            "Wood ash: sprinkle around plant bases for crawling insects. "
+            "Copper fungicide (Blue Shield) for fungal diseases.\n\n"
+            "Check your plants today for any signs of pest damage — look under leaves."
+        )
+
+    # Weed
+    if any(w in normalized for w in ["weed", "grass", "herbicide"]):
+        return (
+            "Weed management in Uganda:\n\n"
+            "Weed at 2-3 weeks and 6 weeks after planting. "
+            "Hand-weeding is most common and cheapest. "
+            "Mulching with grass or banana leaves suppresses weeds.\n\n"
+            "For severe infestations, use recommended herbicides from NAADS. "
+            "Always follow label rates — more is not better.\n\n"
+            "Weed your garden this week before they compete with your crops."
+        )
+
+    # Greeting/who are you
+    if any(w in normalized for w in ["who", "what are you", "your name", "about you", "help me"]):
+        return (
+            "I'm NOVA — your AI farming assistant built for Ugandan farmers. "
+            "I can help with crops (coffee, maize, beans, bananas, cassava), "
+            "livestock (chickens, goats, cattle), soil, weather, market prices, and pest control.\n\n"
+            "Ask me anything — even in Luganda, Swahili, or broken English. I'll understand!"
+        )
+
+    # Thanks
+    if any(w in normalized for w in ["thank", "thanks", "webale", "nice", "great", "good"]):
+        return (
+            "You're welcome! I'm here whenever you need farming advice. "
+            "Feel free to ask about anything — crops, livestock, soil, or market prices."
+        )
+
+    # Default — try to be helpful with whatever they asked
+    return (
+        f"I'd be happy to help with that. Here's what I know:\n\n"
+        f"Regarding: {original[:120]}\n\n"
+        "I can help with: planting and growing crops (coffee, maize, beans, bananas, cassava), "
+        "livestock care (chickens, goats, cattle), soil and fertilizer, pest control, "
+        "weather and seasons, harvesting and storage, and market prices.\n\n"
+        "Try asking something specific like 'How do I plant maize?' or "
+        "'My coffee leaves have yellow spots' and I'll give you practical advice."
+    )

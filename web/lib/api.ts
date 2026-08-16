@@ -50,7 +50,12 @@ export async function apiFetch<T = unknown>(
     if (formData) init.body = formData;
     else if (body !== undefined) init.body = JSON.stringify(body);
 
-    const res = await fetch(url, init);
+    let res: Response;
+    try {
+      res = await fetch(url, init);
+    } catch (err) {
+      throw { detail: "Cannot reach the server. It may be waking up — please try again in 30 seconds." } as ApiError;
+    }
 
     if (res.status === 401 && auth) {
       refreshing = refreshing ?? refreshTokens().finally(() => (refreshing = null));
