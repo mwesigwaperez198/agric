@@ -252,7 +252,6 @@ Answer the question thoroughly and comprehensively. Be as helpful and detailed a
     payload = {
         "system_instruction": {"parts": [{"text": system_instruction}]},
         "contents": contents,
-        "tools": [{"googleSearch": {}}],
         "generation_config": {
             "temperature": 0.7,
             "max_output_tokens": 1500,
