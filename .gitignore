@@ -32,6 +32,7 @@ coverage/
 *.db
 logs/
 data/*.jsonl
+data/*.txt
 !data/.gitkeep
 
 # --- OS / editor ---
