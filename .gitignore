@@ -1,0 +1,44 @@
+# --- Environment & secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- AGENTS.md is local-only ---
+AGENTS.md
+
+# --- Dependencies ---
+node_modules/
+.pnpm-store/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Build output ---
+.next/
+out/
+dist/
+build/
+*.egg-info/
+coverage/
+
+# --- Local data ---
+*.sqlite3
+*.db
+logs/
+data/*.jsonl
+!data/.gitkeep
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- Tauri ---
+src-tauri/target/

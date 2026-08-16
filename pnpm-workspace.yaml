@@ -1,0 +1,8 @@
+packages:
+  - web
+
+allowBuilds:
+  sharp: true
+
+fetchRetries: 20
+fetchTimeout: 600000

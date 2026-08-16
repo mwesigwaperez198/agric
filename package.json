@@ -1,0 +1,19 @@
+{
+  "name": "farm-to-fork",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Farm-to-fork PWA connecting coffee and agri-food producers directly with consumers.",
+  "workspaces": [
+    "web"
+  ],
+  "scripts": {
+    "dev:web": "pnpm --filter @farm/web dev",
+    "dev:api": "python -m uvicorn api.app.main:app --reload --port 8000 --app-dir .",
+    "build": "pnpm --filter @farm/web build",
+    "test:api": "python -m pytest api/tests",
+    "lint": "pnpm --filter @farm/web lint"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
