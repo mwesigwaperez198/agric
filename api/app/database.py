@@ -34,6 +34,7 @@ def init_db() -> None:
     """Create all tables. Runs at startup and is a no-op when tables exist."""
     from api.app.models import (  # noqa: F401
         biosensor,
+        chat,
         knowledge,
         listing,
         trade,

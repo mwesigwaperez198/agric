@@ -34,6 +34,8 @@ class VoiceQueryRequest(BaseModel):
     locale: str = "en"
     crop_type: str = "coffee"
     context: list[dict] | None = Field(default=None, description="Conversation history [{user, assistant}]")
+    detected_language: str | None = Field(default=None, description="Language detected by Whisper")
+    english_text: str | None = Field(default=None, description="English translation of the user text")
 
 
 class VoiceQueryOut(BaseModel):

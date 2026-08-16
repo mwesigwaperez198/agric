@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRequireAuth } from "@/lib/guards";
 import { apiFetch } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
@@ -42,9 +42,18 @@ interface VoiceAnswer {
   dialect: string;
 }
 
+interface ChatHistoryEntry {
+  id: number;
+  role: string;
+  content: string;
+  language: string;
+  created_at: string;
+}
+
 export default function DiagnosticsPage() {
   useRequireAuth();
   const history = useApi<Diagnostic[]>("/diagnostics");
+  const chatHistory = useApi<ChatHistoryEntry[]>("/voice/history");
 
   const [cropType, setCropType] = useState("coffee");
   const [locale, setLocale] = useState("en");
@@ -60,6 +69,22 @@ export default function DiagnosticsPage() {
   const [conversation, setConversation] = useState<Array<{ user: string; assistant: string }>>([]);
   const [asking, setAsking] = useState(false);
   const conversationEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (chatHistory.data && chatHistory.data.length > 0) {
+      const entries: Array<{ user: string; assistant: string }> = [];
+      for (let i = 0; i < chatHistory.data.length - 1; i++) {
+        if (chatHistory.data[i].role === "user" && chatHistory.data[i + 1].role === "assistant") {
+          entries.push({
+            user: chatHistory.data[i].content,
+            assistant: chatHistory.data[i + 1].content,
+          });
+          i++;
+        }
+      }
+      setConversation(entries.slice(-10));
+    }
+  }, [chatHistory.data]);
 
   async function analyze(e: React.FormEvent) {
     e.preventDefault();
@@ -82,18 +107,25 @@ export default function DiagnosticsPage() {
     }
   }
 
-  async function askQuestion(text: string) {
+  async function askQuestion(text: string, lang?: string, englishText?: string) {
     const q = text.trim();
     if (!q) return;
     setAsking(true);
     setError(null);
     try {
-      const res = await apiFetch<VoiceAnswer>("/voice/query", {
+      const res = await apiFetch<VoiceAnswer>("/voice/chat", {
         method: "POST",
-        body: { text: q, locale, crop_type: cropType, context: conversation.slice(-6) },
+        body: {
+          text: q,
+          locale,
+          crop_type: cropType,
+          detected_language: lang || locale,
+          english_text: englishText || q,
+        },
       });
       setVoiceAnswer(res);
-      setConversation((prev) => [...prev.slice(-5), { user: q, assistant: res.answer }]);
+      const displayText = res.translated || res.answer;
+      setConversation((prev) => [...prev.slice(-9), { user: q, assistant: displayText }]);
       setVoiceText("");
       setTimeout(() => conversationEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     } catch (err) {
@@ -299,7 +331,7 @@ export default function DiagnosticsPage() {
               <Icons name="mic" className="h-4 w-4 text-brand-600" /> AI Voice Assistant
             </h2>
             <div className="flex flex-wrap items-center gap-3">
-              <VoiceRecorder onTranscript={(text) => askQuestion(text)} />
+              <VoiceRecorder onTranscript={(text, lang, eng) => askQuestion(text, lang, eng)} />
               <select value={locale} onChange={(e) => setLocale(e.target.value)} className={inputCls}>
                 {DIELECTS.map((d) => (
                   <option key={d.code} value={d.code}>{d.label}</option>
