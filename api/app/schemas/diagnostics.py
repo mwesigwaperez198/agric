@@ -33,6 +33,7 @@ class VoiceQueryRequest(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
     locale: str = "en"
     crop_type: str = "coffee"
+    context: list[dict] | None = Field(default=None, description="Conversation history [{user, assistant}]")
 
 
 class VoiceQueryOut(BaseModel):

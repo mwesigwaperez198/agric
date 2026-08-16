@@ -13,7 +13,7 @@ const NAV_LINKS = [
   { href: "/diagnostics", label: "Diagnostics", icon: "scan" },
   { href: "/biosensor", label: "Biosensor", icon: "activity" },
   { href: "/insights", label: "Insights", icon: "trend" },
-  { href: "/wallet", label: "Wallet", icon: "wallet" },
+  { href: "/dashboard/farms", label: "Farms", icon: "leaf" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

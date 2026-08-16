@@ -49,7 +49,11 @@ export default function FarmerDashboard() {
     price_per_unit: "",
     region: "",
     quality_grade: "",
+    description: "",
   });
+  const [listingImages, setListingImages] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -60,18 +64,51 @@ export default function FarmerDashboard() {
   // Because seller_id is not a personal filter, refetch authenticated orders for the farmer view.
   const myListings = useApi<Listing[]>(`/listings?seller_id=${user?.id ?? 0}`, false);
 
+  function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []);
+    setListingImages((prev) => [...prev, ...files].slice(0, 5));
+    const newPreviews = files.map((f) => URL.createObjectURL(f));
+    setImagePreviews((prev) => [...prev, ...newPreviews].slice(0, 5));
+  }
+
+  function removeImage(index: number) {
+    setListingImages((prev) => prev.filter((_, i) => i !== index));
+    setImagePreviews((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function uploadImages(): Promise<string[]> {
+    if (listingImages.length === 0) return [];
+    setUploadingImages(true);
+    try {
+      const urls: string[] = [];
+      for (const file of listingImages) {
+        const form = new FormData();
+        form.append("file", file);
+        const res = await apiFetch<{ url: string }>("/listings/upload-image", { method: "POST", formData: form });
+        urls.push(res.url);
+      }
+      return urls;
+    } finally {
+      setUploadingImages(false);
+    }
+  }
+
   async function createListing(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
     setCreating(true);
     try {
+      const imageUrls = await uploadImages();
       const payload = {
         ...newListing,
         quantity: Number(newListing.quantity),
         price_per_unit: Number(newListing.price_per_unit),
+        images: imageUrls,
       };
       await apiFetch<Listing>("/listings", { method: "POST", body: payload });
-      setNewListing({ crop_name: "", category: "coffee", variety: "", quantity: "", unit: "kg", price_per_unit: "", region: "", quality_grade: "" });
+      setNewListing({ crop_name: "", category: "coffee", variety: "", quantity: "", unit: "kg", price_per_unit: "", region: "", quality_grade: "", description: "" });
+      setListingImages([]);
+      setImagePreviews([]);
       myListings.refetch();
     } catch (err) {
       setFormError(getErrorMessage(err));
@@ -168,9 +205,36 @@ export default function FarmerDashboard() {
             <input required type="number" min={1} value={newListing.price_per_unit} onChange={(e) => setNewListing({ ...newListing, price_per_unit: e.target.value })} className={inputCls} placeholder="Price/unit (UGX)" />
           </div>
           <input value={newListing.region} onChange={(e) => setNewListing({ ...newListing, region: e.target.value })} className={inputCls} placeholder="Region (e.g. Mbarara)" />
+          <textarea value={newListing.description} onChange={(e) => setNewListing({ ...newListing, description: e.target.value })} rows={2}
+            className={inputCls} placeholder="Description — quality, harvest date, storage conditions (optional)" />
+
+          <div>
+            <p className="mb-1 text-sm font-medium text-slate-700">Crop / Seed Photos</p>
+            <div className="flex flex-wrap gap-2">
+              {imagePreviews.map((src, i) => (
+                <div key={i} className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={src} alt="" className="h-20 w-20 rounded-xl object-cover" />
+                  <button type="button" onClick={() => removeImage(i)}
+                    className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white hover:bg-red-600">
+                    x
+                  </button>
+                </div>
+              ))}
+              {listingImages.length < 5 && (
+                <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 text-xs text-slate-400 hover:border-brand-400">
+                  <Icons name="upload" className="h-4 w-4" />
+                  Add
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageSelect} />
+                </label>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-slate-400">Up to 5 images — JPG, PNG or WebP</p>
+          </div>
+
           {formError && <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>}
-          <button type="submit" disabled={creating} className="w-full rounded-xl bg-brand-500 py-2.5 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-50">
-            {creating ? "Publishing…" : "Publish listing"}
+          <button type="submit" disabled={creating || uploadingImages} className="w-full rounded-xl bg-brand-500 py-2.5 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-50">
+            {uploadingImages ? "Uploading images…" : creating ? "Publishing…" : "Publish listing"}
           </button>
         </form>
       </section>

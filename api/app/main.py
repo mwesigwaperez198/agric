@@ -1,9 +1,11 @@
+import os
 import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from api.app.config import settings
 from api.app.database import init_db
@@ -24,6 +26,7 @@ from api.app.routers import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    os.makedirs(settings.upload_dir, exist_ok=True)
     init_db()
     yield
 
@@ -82,3 +85,5 @@ for router in (
     admin.router,
 ):
     app.include_router(router, prefix=settings.api_prefix)
+
+app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")

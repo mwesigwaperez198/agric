@@ -1,7 +1,10 @@
 import math
+import os
+import uuid
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 
+from api.app.config import settings
 from api.app.deps import CurrentUser, DbSession, FarmerOnly
 from api.app.models import Farm, Listing, User
 from api.app.schemas.listing import ListingCreate, ListingOut
@@ -129,3 +132,26 @@ def update_listing(listing_id: int, patch: dict, user: FarmerOnly, db: DbSession
     db.commit()
     db.refresh(listing)
     return _enrich(listing, db)
+
+
+@router.post("/upload-image")
+async def upload_listing_image(
+    user: FarmerOnly,
+    file: UploadFile = File(...),
+):
+    """Upload an image for a listing. Returns a URL path to the saved file."""
+    data = await file.read()
+    if len(data) > settings.max_upload_bytes:
+        raise HTTPException(status_code=400, detail="File too large")
+    if len(data) < 16:
+        raise HTTPException(status_code=400, detail="File is too small")
+
+    ext = os.path.splitext(file.filename or "upload.jpg")[1] or ".jpg"
+    filename = f"{uuid.uuid4().hex}{ext}"
+    upload_dir = os.path.join(settings.upload_dir, "listings")
+    os.makedirs(upload_dir, exist_ok=True)
+    filepath = os.path.join(upload_dir, filename)
+    with open(filepath, "wb") as f:
+        f.write(data)
+
+    return {"url": f"/uploads/listings/{filename}", "filename": filename}

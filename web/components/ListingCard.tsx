@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { formatMoney, formatDateTime } from "@/lib/utils";
+import { formatMoney, formatDateTime, API_URL } from "@/lib/utils";
 import { Icons } from "@/components/icons";
 
 export interface Listing {
@@ -35,7 +35,7 @@ export function ListingCard({ listing, compact = false }: { listing: Listing; co
       <div className="flex h-28 items-center justify-center bg-gradient-to-br from-emerald-50 to-amber-50">
         {listing.images[0] ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={listing.images[0]} alt={listing.crop_name} className="h-full w-full object-cover" />
+          <img src={listing.images[0].startsWith("http") ? listing.images[0] : `${API_URL.replace("/api/v1", "")}${listing.images[0]}`} alt={listing.crop_name} className="h-full w-full object-cover" />
         ) : (
           <Icons name="leaf" className="h-10 w-10 text-brand-500" />
         )}

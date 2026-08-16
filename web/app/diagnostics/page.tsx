@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRequireAuth } from "@/lib/guards";
 import { apiFetch } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
@@ -12,7 +12,22 @@ import { DIELECTS, formatDateTime, getErrorMessage } from "@/lib/utils";
 interface Diagnostic {
   id: number;
   crop_type: string;
-  prediction: { label: string; healthy?: boolean; confidence?: number; advice?: string };
+  prediction: {
+    label: string;
+    healthy?: boolean;
+    confidence?: number;
+    advice?: string;
+    plant_identification?: string;
+    condition_summary?: string;
+    root_cause_analysis?: string;
+    severity?: string;
+    affected_parts?: string[];
+    spread_risk?: string;
+    immediate_actions?: string[];
+    long_term_management?: string[];
+    local_products?: string[];
+    references?: string[];
+  };
   confidence: number;
   model: string;
   advice?: string | null;
@@ -42,7 +57,9 @@ export default function DiagnosticsPage() {
 
   const [voiceText, setVoiceText] = useState("");
   const [voiceAnswer, setVoiceAnswer] = useState<VoiceAnswer | null>(null);
+  const [conversation, setConversation] = useState<Array<{ user: string; assistant: string }>>([]);
   const [asking, setAsking] = useState(false);
+  const conversationEndRef = useRef<HTMLDivElement>(null);
 
   async function analyze(e: React.FormEvent) {
     e.preventDefault();
@@ -73,10 +90,12 @@ export default function DiagnosticsPage() {
     try {
       const res = await apiFetch<VoiceAnswer>("/voice/query", {
         method: "POST",
-        body: { text: q, locale, crop_type: cropType },
+        body: { text: q, locale, crop_type: cropType, context: conversation.slice(-6) },
       });
       setVoiceAnswer(res);
+      setConversation((prev) => [...prev.slice(-5), { user: q, assistant: res.answer }]);
       setVoiceText("");
+      setTimeout(() => conversationEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -95,12 +114,19 @@ export default function DiagnosticsPage() {
   const inputCls =
     "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200";
 
+  const severityColor: Record<string, string> = {
+    low: "bg-green-100 text-green-800",
+    medium: "bg-amber-100 text-amber-800",
+    high: "bg-orange-100 text-orange-800",
+    critical: "bg-red-100 text-red-800",
+  };
+
   return (
     <div className="animate-fade-in space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Agribusiness AI assistant</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Agribusiness AI Assistant</h1>
         <p className="text-sm text-slate-500">
-          Vision plant diagnostics + localized voice support. Guarded to agriculture topics only.
+          Vision diagnostics + contextual voice assistant. Powered by GPT-4o with Ugandan agriculture knowledge.
         </p>
       </div>
 
@@ -156,33 +182,112 @@ export default function DiagnosticsPage() {
             <label className="mt-3 block">
               <span className="mb-1 block text-sm font-medium text-slate-700">Notes for the model (optional)</span>
               <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2}
-                className={inputCls} placeholder="e.g. Leaves turning yellow near the base" />
+                className={inputCls} placeholder="e.g. Leaves turning yellow near the base, started 3 days ago" />
             </label>
 
             {error && <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
             <button type="submit" disabled={analyzing || !image}
               className="mt-4 w-full rounded-xl bg-brand-500 py-2.5 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-50">
-              {analyzing ? "Analyzing…" : "Analyze image"}
+              {analyzing ? "Analyzing with AI…" : "Analyze image"}
             </button>
           </form>
 
           {result && (
-            <div className="animate-fade-in rounded-2xl border border-brand-200 bg-brand-50 p-5">
+            <div className="animate-fade-in space-y-3 rounded-2xl border border-brand-200 bg-brand-50 p-5">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-brand-900">Diagnosis result</h3>
-                <span className="text-xs text-brand-600">{result.model}</span>
+                <h3 className="font-semibold text-brand-900">Detailed Diagnosis</h3>
+                <div className="flex items-center gap-2">
+                  {result.prediction.severity && (
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${severityColor[result.prediction.severity] ?? "bg-slate-100 text-slate-700"}`}>
+                      {result.prediction.severity.toUpperCase()}
+                    </span>
+                  )}
+                  <span className="text-xs text-brand-600">{result.model}</span>
+                </div>
               </div>
-              <p className="mt-2 text-lg font-bold capitalize text-slate-900">
+
+              <p className="text-lg font-bold capitalize text-slate-900">
                 {result.prediction.label?.replace(/_/g, " ")}
                 <span className="ml-2 rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-brand-700">
                   {Math.round((result.prediction.confidence ?? result.confidence) * 100)}% confidence
                 </span>
               </p>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-brand-100">
-                <div className="h-full rounded-full bg-brand-500" style={{ width: `${(result.prediction.confidence ?? result.confidence) * 100}%` }} />
-              </div>
-              {result.advice && <p className="mt-3 text-sm text-brand-800">{result.advice}</p>}
+
+              {result.prediction.plant_identification && (
+                <p className="text-sm text-brand-800"><strong>Identified:</strong> {result.prediction.plant_identification}</p>
+              )}
+
+              {result.prediction.condition_summary && (
+                <div className="rounded-xl bg-white p-3">
+                  <p className="text-xs font-semibold uppercase text-slate-500">Summary</p>
+                  <p className="mt-1 text-sm text-slate-700">{result.prediction.condition_summary}</p>
+                </div>
+              )}
+
+              {result.prediction.root_cause_analysis && (
+                <div className="rounded-xl bg-white p-3">
+                  <p className="text-xs font-semibold uppercase text-slate-500">Root Cause Analysis</p>
+                  <p className="mt-1 text-sm text-slate-700">{result.prediction.root_cause_analysis}</p>
+                </div>
+              )}
+
+              {result.prediction.affected_parts && result.prediction.affected_parts.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {result.prediction.affected_parts.map((part) => (
+                    <span key={part} className="rounded-full bg-brand-100 px-2 py-0.5 text-xs font-medium text-brand-700">{part}</span>
+                  ))}
+                </div>
+              )}
+
+              {result.prediction.spread_risk && (
+                <p className="text-sm text-brand-800"><strong>Spread risk:</strong> {result.prediction.spread_risk}</p>
+              )}
+
+              {result.prediction.immediate_actions && result.prediction.immediate_actions.length > 0 && (
+                <div className="rounded-xl bg-white p-3">
+                  <p className="text-xs font-semibold uppercase text-slate-500">Immediate Actions</p>
+                  <ol className="mt-1 list-decimal list-inside space-y-1">
+                    {result.prediction.immediate_actions.map((action, i) => (
+                      <li key={i} className="text-sm text-slate-700">{action}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+
+              {result.prediction.long_term_management && result.prediction.long_term_management.length > 0 && (
+                <div className="rounded-xl bg-white p-3">
+                  <p className="text-xs font-semibold uppercase text-slate-500">Long-Term Management</p>
+                  <ul className="mt-1 list-disc list-inside space-y-1">
+                    {result.prediction.long_term_management.map((item, i) => (
+                      <li key={i} className="text-sm text-slate-700">{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {result.prediction.local_products && result.prediction.local_products.length > 0 && (
+                <div className="rounded-xl bg-white p-3">
+                  <p className="text-xs font-semibold uppercase text-slate-500">Available in Uganda</p>
+                  <ul className="mt-1 list-disc list-inside space-y-1">
+                    {result.prediction.local_products.map((item, i) => (
+                      <li key={i} className="text-sm text-slate-700">{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {result.prediction.references && result.prediction.references.length > 0 && (
+                <div className="rounded-xl bg-white p-3">
+                  <p className="text-xs font-semibold uppercase text-slate-500">References</p>
+                  <ul className="mt-1 list-disc list-inside space-y-1">
+                    {result.prediction.references.map((ref, i) => (
+                      <li key={i} className="text-xs text-slate-500">{ref}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <p className="mt-2 text-xs text-brand-600">{formatDateTime(result.created_at)}</p>
             </div>
           )}
@@ -191,7 +296,7 @@ export default function DiagnosticsPage() {
         <section className="space-y-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="mb-3 flex items-center gap-2 font-semibold text-slate-900">
-              <Icons name="mic" className="h-4 w-4 text-brand-600" /> Voice assistant
+              <Icons name="mic" className="h-4 w-4 text-brand-600" /> AI Voice Assistant
             </h2>
             <div className="flex flex-wrap items-center gap-3">
               <VoiceRecorder onTranscript={(text) => askQuestion(text)} />
@@ -206,26 +311,49 @@ export default function DiagnosticsPage() {
                 value={voiceText}
                 onChange={(e) => setVoiceText(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && askQuestion(voiceText)}
-                placeholder="Or type a question: how do I treat coffee leaf rust?"
+                placeholder="Ask anything about farming in Uganda…"
                 className={`${inputCls} flex-1`}
               />
               <button onClick={() => askQuestion(voiceText)} disabled={asking}
                 className="rounded-xl bg-ink-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-ink-700 disabled:opacity-50">
-                Ask
+                {asking ? "Thinking…" : "Ask"}
               </button>
             </div>
             <p className="mt-2 text-xs text-slate-400">
-              Guarded assistant — questions outside farming, coffee, livestock or food safety are declined.
+              Contextual — remembers your conversation. Ask follow-up questions for deeper answers.
             </p>
 
-            {voiceAnswer && (
+            {conversation.length > 0 && (
+              <div className="mt-4 max-h-96 overflow-y-auto space-y-3">
+                {conversation.map((exchange, i) => (
+                  <div key={i} className="space-y-2">
+                    <div className="rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                      <p className="font-semibold text-xs text-blue-600 mb-1">You</p>
+                      {exchange.user}
+                    </div>
+                    <div className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="font-semibold text-xs text-slate-500">NOVA AI</p>
+                        <button onClick={() => speak(exchange.assistant)} className="text-xs text-brand-600 hover:underline">
+                          Listen
+                        </button>
+                      </div>
+                      <div className="whitespace-pre-line">{exchange.assistant}</div>
+                    </div>
+                  </div>
+                ))}
+                <div ref={conversationEndRef} />
+              </div>
+            )}
+
+            {voiceAnswer && conversation.length === 0 && (
               <div className="animate-fade-in mt-4 rounded-2xl bg-slate-50 p-4">
                 {!voiceAnswer.guardrail && (
                   <p className="flex items-center gap-2 text-sm font-semibold text-red-600">
                     <Icons name="alert" className="h-4 w-4" /> Out of domain
                   </p>
                 )}
-                <p className="mt-1 text-sm text-slate-700">{voiceAnswer.answer}</p>
+                <div className="whitespace-pre-line mt-1 text-sm text-slate-700">{voiceAnswer.answer}</div>
                 {voiceAnswer.translated && (
                   <p className="mt-2 border-t border-slate-200 pt-2 text-sm font-medium text-brand-700">
                     {voiceAnswer.translated}

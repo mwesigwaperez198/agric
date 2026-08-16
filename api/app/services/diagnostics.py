@@ -82,6 +82,16 @@ def mock_diagnose(data: bytes, crop_type: str) -> dict:
         "healthy": healthy,
         "confidence": confidence,
         "advice": advice,
+        "plant_identification": f"{crop_type} sample",
+        "condition_summary": advice,
+        "rootCauseAnalysis": "Connect to a vision model (set VISION_PROVIDER=openai) for detailed root cause analysis.",
+        "severity": "medium" if not healthy else "low",
+        "affectedParts": ["leaves"],
+        "spreadRisk": "Moderate — consult an agronomist for field-level assessment.",
+        "immediateActions": [advice] if advice else ["Upload a clear photo for AI-powered analysis."],
+        "longTermManagement": ["Regular scouting and soil testing recommended."],
+        "localProducts": ["Contact your nearest NAADS extension worker for product recommendations."],
+        "references": ["NARO Uganda — https://www.naro.go.ug"],
     }
 
 
@@ -91,29 +101,71 @@ def openai_diagnose(data: bytes, crop_type: str, note: str | None = None) -> dic
     import httpx
 
     b64 = base64.b64encode(data).decode("ascii")
-    prompt = (
-        f"Identify any disease, pest, or infestation in this {crop_type} photo. "
-        "Return strict JSON with keys label, healthy, confidence (0-1), advice."
-    )
-    if note:
-        prompt += f" Farmer note: {note}"
+    prompt = f"""You are an expert agricultural diagnostics AI for Ugandan farmers. Analyze this {crop_type} photo.
+
+Provide a COMPREHENSIVE diagnosis. Return strict JSON with these keys:
+{{
+  "label": "disease_or_condition_name",
+  "healthy": true/false,
+  "confidence": 0.0-1.0,
+  "plant_identification": "species and variety if identifiable",
+  "condition_summary": "2-3 sentence overview of what you observe",
+  "root_cause_analysis": "detailed explanation of why this condition occurs — environmental factors, soil conditions, pathogen biology, management practices",
+  "severity": "low/medium/high/critical",
+  "affected_parts": ["list of plant parts affected"],
+  "spread_risk": "how likely it is to spread to other plants and why",
+  "immediate_actions": [
+    "Step 1: specific action with product names and dosages where applicable",
+    "Step 2: ...",
+    "Step 3: ..."
+  ],
+  "long_term_management": [
+    "Seasonal practice recommendation 1",
+    "Seasonal practice recommendation 2"
+  ],
+  "local_products": ["specific fungicide/insecticide products available in Uganda with approximate costs"],
+  "references": ["research institution or publication reference"],
+  "advice": "concise 1-2 sentence summary for quick action"
+}}
+
+Context about Ugandan agriculture:
+- Common coffee varieties: Bugisu Arabica, Robusta (Nganda, Erecta)
+- Key institutions: NARO (National Agricultural Research Organisation), UCDA (Uganda Coffee Development Authority), NaCORRI
+- Local fungicides: Copper-based (Blue Shield, Kocide), Ridomil Gold, Topas
+- Biopesticides available: Beauveria bassiana, Trichoderma harzianum
+- Climate zones: Lake Victoria basin, Western highlands, Mt. Elgon region
+- Soil types: Ferralsols (coffee zones), Nitisols (highlands)
+
+{f"Farmer's observation: {note}" if note else ""}
+Analyze the image carefully. If healthy, still provide monitoring advice."""
+
     resp = httpx.post(
         "https://api.openai.com/v1/chat/completions",
         headers={"Authorization": f"Bearer {settings.whisper_api_key}"},
         json={
             "model": "gpt-4o",
             "response_format": {"type": "json_object"},
+            "max_tokens": 2000,
             "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an expert agricultural diagnostics system for Ugandan farmers. "
+                        "You provide detailed, evidence-based analysis with specific product recommendations "
+                        "available in Uganda. Always cite NARO or UCDA research where applicable. "
+                        "Be thorough but practical — farmers need actionable steps they can take today."
+                    ),
+                },
                 {
                     "role": "user",
                     "content": [
                         {"type": "text", "text": prompt},
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
                     ],
-                }
+                },
             ],
         },
-        timeout=30,
+        timeout=60,
     )
     resp.raise_for_status()
     return json.loads(resp.json()["choices"][0]["message"]["content"])
@@ -163,7 +215,7 @@ def diagnose(data: bytes, crop_type: str, note: str | None = None) -> tuple[dict
     validate_image(data)
     provider = settings.vision_provider.lower()
 
-    if provider == "openai" and settings.whisper_api_key:
+    if provider in ("openai", "auto") and settings.whisper_api_key:
         return openai_diagnose(data, crop_type, note), "gpt-4o-vision"
     if provider == "anthropic" and settings.whisper_api_key:
         return anthropic_diagnose(data, crop_type, note), "claude-3-5-sonnet"

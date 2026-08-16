@@ -7,7 +7,7 @@ import { apiFetch } from "@/lib/api";
 import type { Listing } from "@/components/ListingCard";
 import { Spinner } from "@/components/ui";
 import { useAuthStore } from "@/stores/auth-store";
-import { formatMoney, formatDateTime, getErrorMessage } from "@/lib/utils";
+import { formatMoney, formatDateTime, getErrorMessage, API_URL } from "@/lib/utils";
 import { Icons } from "@/components/icons";
 
 export default function ListingDetailView() {
@@ -67,11 +67,20 @@ export default function ListingDetailView() {
         <div className="flex h-72 items-center justify-center bg-gradient-to-br from-emerald-50 to-amber-50">
           {listing.images[0] ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={listing.images[0]} alt={listing.crop_name} className="h-full w-full object-cover" />
+            <img src={listing.images[0].startsWith("http") ? listing.images[0] : `${API_URL.replace("/api/v1", "")}${listing.images[0]}`} alt={listing.crop_name} className="h-full w-full object-cover" />
           ) : (
             <Icons name="leaf" className="h-16 w-16 text-brand-500" />
           )}
         </div>
+        {listing.images.length > 1 && (
+          <div className="flex gap-2 p-3 overflow-x-auto">
+            {listing.images.map((img, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={i} src={img.startsWith("http") ? img : `${API_URL.replace("/api/v1", "")}${img}`}
+                alt="" className="h-16 w-16 flex-shrink-0 rounded-lg object-cover" />
+            ))}
+          </div>
+        )}
         <div className="p-6">
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold capitalize text-slate-600">

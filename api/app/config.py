@@ -35,8 +35,8 @@ class Settings(BaseSettings):
     # Payments webhook log (Phase 1 mock endpoint writes here)
     webhook_log_path: str = "data/webhooks.jsonl"
 
-    # Vision / voice providers (empty => mock fallback)
-    vision_provider: str = "mock"
+    # Vision / voice providers (empty => mock fallback, "openai" => GPT-4o)
+    vision_provider: str = "auto"
     whisper_api_key: str = ""
     elevenlabs_api_key: str = ""
 
