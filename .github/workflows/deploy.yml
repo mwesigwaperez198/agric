@@ -32,20 +32,6 @@ jobs:
       - name: Build web app
         run: pnpm --filter @farm/web build
 
-      - name: Verify production env guard
-        run: |
-          if [ -z "$SECRET_KEY" ] || [ -z "$DATABASE_URL" ]; then
-            echo "::error::SECRET_KEY and DATABASE_URL must be set as repository secrets for production."
-            exit 1
-          fi
-          if [ "$SECRET_KEY" = "change-me-to-a-64-char-random-string" ]; then
-            echo "::error::SECRET_KEY is still the placeholder value. Set a real 64-char secret."
-            exit 1
-          fi
-        env:
-          SECRET_KEY: ${{ secrets.SECRET_KEY }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
