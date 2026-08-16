@@ -38,7 +38,7 @@ def _token_pair(user: User) -> TokenPair:
 
 @router.post("/register", response_model=TokenPair, status_code=status.HTTP_201_CREATED)
 def register(body: RegisterRequest, request: Request, db: DbSession):
-    allowed, retry = rate_limit(f"register:{request.client.host}", limit=10)
+    allowed, retry = rate_limit(f"register:{request.client.host}", limit=30)
     if not allowed:
         raise HTTPException(status_code=429, detail=f"Too many attempts, retry in {retry}s")
 
@@ -64,7 +64,7 @@ def register(body: RegisterRequest, request: Request, db: DbSession):
 
 @router.post("/login", response_model=TokenPair)
 def login(body: LoginRequest, request: Request, db: DbSession):
-    allowed, retry = rate_limit(f"login:{request.client.host}", limit=10)
+    allowed, retry = rate_limit(f"login:{request.client.host}", limit=30)
     if not allowed:
         raise HTTPException(status_code=429, detail=f"Too many attempts, retry in {retry}s")
 
@@ -83,7 +83,7 @@ def login(body: LoginRequest, request: Request, db: DbSession):
 @router.post("/totp/login", response_model=TokenPair)
 def totp_login(body: TotpConfirmRequest, request: Request, db: DbSession):
     """Second factor step: email + password + TOTP code -> tokens."""
-    allowed, retry = rate_limit(f"totp:{request.client.host}", limit=10)
+    allowed, retry = rate_limit(f"totp:{request.client.host}", limit=30)
     if not allowed:
         raise HTTPException(status_code=429, detail=f"Too many attempts, retry in {retry}s")
 
