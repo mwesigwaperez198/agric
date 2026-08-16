@@ -13,6 +13,22 @@ interface TranscribeResult {
   needs_translation: boolean;
 }
 
+function getSupportedMimeType(): string {
+  const types = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+    "audio/ogg;codecs=opus",
+    "audio/wav",
+  ];
+  for (const type of types) {
+    if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(type)) {
+      return type;
+    }
+  }
+  return "";
+}
+
 export function VoiceRecorder({
   onTranscript,
 }: {
@@ -27,35 +43,71 @@ export function VoiceRecorder({
   async function start() {
     setError(null);
     setLangInfo(null);
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setError("Voice not supported on this device. Type your question below.");
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 16000,
+        },
       });
-      const rec = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+
+      const mimeType = getSupportedMimeType();
+      const options = mimeType ? { mimeType } : undefined;
+      const rec = new MediaRecorder(stream, options);
+
       mediaRef.current = rec;
       chunksRef.current = [];
-      rec.ondataavailable = (e) => chunksRef.current.push(e.data);
+
+      rec.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
       rec.onstop = send;
       rec.start();
       setStatus("recording");
-    } catch {
-      setError("Microphone access denied. Type your question instead.");
+
+      setTimeout(() => {
+        if (rec.state === "recording") {
+          rec.stop();
+        }
+      }, 30000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("NotAllowedError") || msg.includes("Permission")) {
+        setError("Microphone blocked. Go to Settings > Microphone and allow access.");
+      } else if (msg.includes("NotFoundError")) {
+        setError("No microphone found. Type your question below.");
+      } else {
+        setError("Could not start recording. Type your question below.");
+      }
       setStatus("idle");
     }
   }
 
   function stop() {
-    mediaRef.current?.stop();
-    mediaRef.current?.stream.getTracks().forEach((t) => t.stop());
+    if (mediaRef.current && mediaRef.current.state === "recording") {
+      mediaRef.current.stop();
+      mediaRef.current.stream.getTracks().forEach((t) => t.stop());
+    }
     setStatus("idle");
   }
 
   async function send() {
     if (!chunksRef.current.length) return;
     setStatus("transcribing");
-    const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+
+    const mimeType = chunksRef.current[0]?.type || "audio/webm";
+    const blob = new Blob(chunksRef.current, { type: mimeType });
     const form = new FormData();
     form.append("file", blob, "voice.webm");
+
     try {
       const res = await apiFetch<TranscribeResult>("/voice/transcribe", {
         method: "POST",
@@ -67,16 +119,16 @@ export function VoiceRecorder({
           nyn: "Runyankore", rn: "Kirundi", sa: "Soga",
         };
         if (res.detected_language && res.detected_language !== "en") {
-          setLangInfo(`Detected: ${langNames[res.detected_language] || res.detected_language}`);
+          setLangInfo(`${langNames[res.detected_language] || res.detected_language} detected`);
         } else {
           setLangInfo(null);
         }
         onTranscript(res.text, res.detected_language, res.english_text);
       } else {
-        setError("Could not transcribe. Type your question below.");
+        setError("Could not understand. Please type your question.");
       }
     } catch {
-      setError("Speech service unavailable. Type your question below.");
+      setError("Voice service unavailable. Type your question.");
     } finally {
       setStatus("idle");
     }
@@ -91,7 +143,7 @@ export function VoiceRecorder({
         }`}
       >
         <Icons name="mic" className="h-4 w-4" />
-        {status === "recording" ? "Stop" : "Ask by voice"}
+        {status === "recording" ? "Stop" : "Speak"}
       </button>
       {status === "transcribing" && <span className="text-sm text-slate-500">Listening...</span>}
       {langInfo && <span className="text-xs text-brand-600 font-medium">{langInfo}</span>}
