@@ -67,7 +67,15 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "timestamp": time.time()}
+    return {
+        "status": "healthy",
+        "timestamp": time.time(),
+        "ai": {
+            "gemini_configured": bool(settings.gemini_api_key),
+            "whisper_configured": bool(settings.whisper_api_key),
+            "elevenlabs_configured": bool(settings.elevenlabs_api_key),
+        },
+    }
 
 
 for router in (
