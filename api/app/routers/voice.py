@@ -205,60 +205,64 @@ def _normalize(text: str) -> str:
 
 def _build_live_context(db: DbSession, user_id: int, crop_type: str) -> str:
     """Build a live data context block from the latest biosensor reading for this user's farm."""
-    from datetime import UTC, datetime
+    try:
+        from datetime import UTC, datetime
 
-    from api.app.models.farm import Farm
+        from api.app.models.user import Farm
 
-    farm_ids = [f.id for f in db.query(Farm.id).filter(Farm.owner_id == user_id).all()]
-    if not farm_ids:
-        reading = (
-            db.query(BiosensorReading)
-            .order_by(BiosensorReading.received_at.desc())
-            .first()
-        )
-    else:
-        reading = (
-            db.query(BiosensorReading)
-            .filter(BiosensorReading.farm_id.in_(farm_ids))
-            .order_by(BiosensorReading.received_at.desc())
-            .first()
-        )
-        if not reading:
+        farm_ids = [f.id for f in db.query(Farm.id).filter(Farm.owner_id == user_id).all()]
+        if not farm_ids:
             reading = (
                 db.query(BiosensorReading)
                 .order_by(BiosensorReading.received_at.desc())
                 .first()
             )
-    if not reading:
-        return ""
-
-    payload = reading.payload or {}
-    parts = ["[LIVE SENSOR DATA]"]
-    parts.append(f"Device: {reading.device_id}")
-    parts.append(f"Crop: {reading.crop_name or crop_type}")
-    parts.append(f"Threat Level: {reading.threat_level} (risk score: {reading.risk_score})")
-    if reading.threats:
-        parts.append(f"Active Threats: {', '.join(str(t) for t in reading.threats)}")
-
-    for key in ["soil_moisture", "soil_temp", "soil_ph", "nitrogen", "phosphorus", "potassium",
-                 "air_temp", "humidity", "light_lux", "co2_ppm", "rainfall_mm"]:
-        if key in payload and payload[key] is not None:
-            label = key.replace("_", " ").title()
-            unit = {"soil_moisture": "%", "soil_temp": "°C", "soil_ph": "", "nitrogen": "ppm",
-                     "phosphorus": "ppm", "potassium": "ppm", "air_temp": "°C", "humidity": "%",
-                     "light_lux": " lux", "co2_ppm": " ppm", "rainfall_mm": " mm"}.get(key, "")
-            parts.append(f"{label}: {payload[key]}{unit}")
-
-    if reading.read_at:
-        age = datetime.now(UTC) - reading.read_at.replace(tzinfo=UTC)
-        mins = int(age.total_seconds() / 60)
-        if mins < 1440:
-            parts.append(f"Reading age: {mins} minutes ago")
         else:
-            parts.append(f"Reading age: {mins // 1440} days ago")
+            reading = (
+                db.query(BiosensorReading)
+                .filter(BiosensorReading.farm_id.in_(farm_ids))
+                .order_by(BiosensorReading.received_at.desc())
+                .first()
+            )
+            if not reading:
+                reading = (
+                    db.query(BiosensorReading)
+                    .order_by(BiosensorReading.received_at.desc())
+                    .first()
+                )
+        if not reading:
+            return ""
 
-    parts.append("[/LIVE SENSOR DATA]")
-    return "\n".join(parts) + "\n\n"
+        payload = reading.payload or {}
+        parts = ["[LIVE SENSOR DATA]"]
+        parts.append(f"Device: {reading.device_id}")
+        parts.append(f"Crop: {reading.crop_name or crop_type}")
+        parts.append(f"Threat Level: {reading.threat_level} (risk score: {reading.risk_score})")
+        if reading.threats:
+            parts.append(f"Active Threats: {', '.join(str(t) for t in reading.threats)}")
+
+        for key in ["soil_moisture", "soil_temp", "soil_ph", "nitrogen", "phosphorus", "potassium",
+                     "air_temp", "humidity", "light_lux", "co2_ppm", "rainfall_mm"]:
+            if key in payload and payload[key] is not None:
+                label = key.replace("_", " ").title()
+                unit = {"soil_moisture": "%", "soil_temp": "°C", "soil_ph": "", "nitrogen": "ppm",
+                         "phosphorus": "ppm", "potassium": "ppm", "air_temp": "°C", "humidity": "%",
+                         "light_lux": " lux", "co2_ppm": " ppm", "rainfall_mm": " mm"}.get(key, "")
+                parts.append(f"{label}: {payload[key]}{unit}")
+
+        if reading.read_at:
+            age = datetime.now(UTC) - reading.read_at.replace(tzinfo=UTC)
+            mins = int(age.total_seconds() / 60)
+            if mins < 1440:
+                parts.append(f"Reading age: {mins} minutes ago")
+            else:
+                parts.append(f"Reading age: {mins // 1440} days ago")
+
+        parts.append("[/LIVE SENSOR DATA]")
+        return "\n".join(parts) + "\n\n"
+    except Exception as e:
+        logger.warning("Failed to build live context: %s", e)
+        return ""
 
 
 def _reason(text: str, crop_type: str, history: list[dict], user_name: str, live_context: str = "") -> str:
