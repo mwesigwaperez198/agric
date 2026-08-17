@@ -246,23 +246,15 @@ Context: Ugandan agriculture — NARO, UCDA, copper fungicides, bimodal rainfall
 {f"Farmer observation: {note}" if note else ""}
 Analyze carefully. If healthy, still provide monitoring advice."""
 
-    payload = {
-        "contents": [{
-            "parts": [
-                {"text": prompt},
-                {"inline_data": {"mime_type": "image/jpeg", "data": b64}},
-            ]
-        }],
-        "generation_config": {"temperature": 0.3, "max_output_tokens": 1500},
-    }
-
     resp = httpx.post(
         "https://generativelanguage.googleapis.com/v1beta/interactions",
         headers={"x-goog-api-key": settings.gemini_api_key, "Content-Type": "application/json"},
         json={
             "model": "gemini-3.5-flash",
-            "input": prompt,
-            "media": [{"mime_type": "image/jpeg", "data": b64}],
+            "input": [
+                {"type": "text", "text": prompt},
+                {"type": "image", "data": b64, "mime_type": "image/jpeg"},
+            ],
         },
         timeout=60,
     )
@@ -286,7 +278,7 @@ def diagnose(data: bytes, crop_type: str, note: str | None = None) -> tuple[dict
 
     if provider in ("gemini", "auto") and settings.gemini_api_key:
         try:
-            return gemini_diagnose(data, crop_type, note), "gemini-2.5-flash"
+            return gemini_diagnose(data, crop_type, note), "gemini-3.5-flash"
         except Exception as e:
             logger.error("Gemini vision failed: %s — falling back", e)
     if provider in ("openai", "auto") and settings.whisper_api_key:
