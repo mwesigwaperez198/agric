@@ -33,6 +33,8 @@ interface ChatHistoryEntry {
 interface ChatMsg {
   role: "user" | "assistant";
   text: string;
+  ttsUrl?: string | null;
+  error?: boolean;
 }
 
 const SUGGESTIONS = [
@@ -41,6 +43,32 @@ const SUGGESTIONS = [
   { icon: "🐔", text: "How do I raise chickens?" },
   { icon: "🌧", text: "When should I plant this season?" },
 ];
+
+function renderMarkdown(text: string): string {
+  let html = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  html = html.replace(/^### (.+)$/gm, '<h3 class="text-base font-bold text-slate-900 mt-3 mb-1">$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2 class="text-lg font-bold text-slate-900 mt-4 mb-1">$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1 class="text-xl font-bold text-slate-900 mt-4 mb-1">$1</h1>');
+
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold">$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  html = html.replace(/^- (.+)$/gm, '<li class="ml-4 list-disc">$1</li>');
+  html = html.replace(/^(\d+)\. (.+)$/gm, '<li class="ml-4 list-decimal">$2</li>');
+
+  html = html.replace(/(<li[^>]*>.*<\/li>\n?)+/g, (match) => `<ul class="my-1 space-y-0.5">${match}</ul>`);
+
+  html = html.replace(/`([^`]+)`/g, '<code class="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-mono">$1</code>');
+
+  html = html.replace(/\n{2,}/g, '</p><p class="mt-2">');
+  html = html.replace(/\n/g, '<br/>');
+
+  return `<p>${html}</p>`;
+}
 
 export default function DiagnosticsPage() {
   useRequireAuth();
@@ -54,9 +82,12 @@ export default function DiagnosticsPage() {
   const [historyData, setHistoryData] = useState<ChatHistoryEntry[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [image, setImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [playingAudio, setPlayingAudio] = useState<number | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const scroll = useCallback(() => {
     setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
@@ -66,26 +97,56 @@ export default function DiagnosticsPage() {
     scroll();
   }, [messages, scroll]);
 
-  async function send(text: string) {
+  useEffect(() => {
+    return () => {
+      if (imagePreview) URL.revokeObjectURL(imagePreview);
+      audioRef.current?.pause();
+    };
+  }, [imagePreview]);
+
+  async function send(text: string, retryIndex?: number) {
     const q = text.trim();
     if (!q || busy) return;
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", text: q }]);
     setBusy(true);
     setError(null);
+
+    if (retryIndex !== undefined) {
+      setMessages((prev) => prev.map((m, i) => i === retryIndex ? { ...m, error: false } : m));
+    } else {
+      setMessages((prev) => [...prev, { role: "user", text: q }]);
+    }
+
     try {
       const res = await apiFetch<VoiceAnswer>("/voice/chat", {
         method: "POST",
         body: { text: q, locale, crop_type: "general" },
       });
       const reply = res.translated || res.answer;
-      setMessages((prev) => [...prev, { role: "assistant", text: reply }]);
+      setMessages((prev) => {
+        if (retryIndex !== undefined) {
+          const updated = [...prev];
+          updated[retryIndex + 1] = { role: "assistant", text: reply, ttsUrl: res.tts_audio_url };
+          return updated;
+        }
+        return [...prev, { role: "assistant", text: reply, ttsUrl: res.tts_audio_url }];
+      });
     } catch (err) {
       setError(getErrorMessage(err));
+      if (retryIndex !== undefined) {
+        setMessages((prev) => prev.map((m, i) => i === retryIndex + 1 ? { ...m, error: true } : m));
+      }
     } finally {
       setBusy(false);
       inputRef.current?.focus();
     }
+  }
+
+  function clearChat() {
+    setMessages([]);
+    setError(null);
+    audioRef.current?.pause();
+    setPlayingAudio(null);
   }
 
   async function loadHistory() {
@@ -135,12 +196,21 @@ export default function DiagnosticsPage() {
         { role: "user", text: "[Photo uploaded]" },
         { role: "assistant", text: advice },
       ]);
+      if (imagePreview) URL.revokeObjectURL(imagePreview);
       setImage(null);
+      setImagePreview(null);
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
       setAnalyzing(false);
     }
+  }
+
+  function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null;
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImage(f);
+    setImagePreview(f ? URL.createObjectURL(f) : null);
   }
 
   async function onVoice(text: string, _lang?: string, englishText?: string) {
@@ -160,12 +230,31 @@ export default function DiagnosticsPage() {
         },
       });
       const reply = res.translated || res.answer;
-      setMessages((prev) => [...prev, { role: "assistant", text: reply }]);
+      setMessages((prev) => [...prev, { role: "assistant", text: reply, ttsUrl: res.tts_audio_url }]);
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
       setBusy(false);
     }
+  }
+
+  function playTts(url: string, msgIndex: number) {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      if (playingAudio === msgIndex) {
+        setPlayingAudio(null);
+        return;
+      }
+    }
+    const audio = new Audio(url);
+    audio.onended = () => setPlayingAudio(null);
+    audio.onerror = () => {
+      setPlayingAudio(null);
+      speak(messages[msgIndex].text);
+    };
+    audioRef.current = audio;
+    audio.play();
+    setPlayingAudio(msgIndex);
   }
 
   function speak(text: string) {
@@ -193,6 +282,15 @@ export default function DiagnosticsPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {hasChat && (
+              <button
+                onClick={clearChat}
+                className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100"
+                title="New conversation"
+              >
+                <Icons name="trash" className="h-4 w-4" />
+              </button>
+            )}
             <select
               value={locale}
               onChange={(e) => setLocale(e.target.value)}
@@ -297,15 +395,48 @@ export default function DiagnosticsPage() {
                           : "bg-white text-slate-800 shadow-sm border border-slate-100 rounded-bl-md"
                       }`}
                     >
-                      <div className="whitespace-pre-line">{m.text}</div>
+                      {m.role === "assistant" ? (
+                        <div
+                          className="prose prose-sm max-w-none prose-headings:text-slate-900 prose-strong:text-slate-900 prose-li:text-slate-700"
+                          dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }}
+                        />
+                      ) : (
+                        <div className="whitespace-pre-line">{m.text}</div>
+                      )}
                     </div>
                     {m.role === "assistant" && (
-                      <button
-                        onClick={() => speak(m.text)}
-                        className="flex items-center gap-1 px-2 text-xs text-slate-400 hover:text-brand-600"
-                      >
-                        <Icons name="mic" className="h-3 w-3" /> Listen
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {m.ttsUrl && (
+                          <button
+                            onClick={() => playTts(m.ttsUrl!, i)}
+                            className={`flex items-center gap-1 px-2 text-xs hover:text-brand-600 ${
+                              playingAudio === i ? "text-brand-600" : "text-slate-400"
+                            }`}
+                          >
+                            <Icons name="mic" className="h-3 w-3" />
+                            {playingAudio === i ? "Stop" : "Listen"}
+                          </button>
+                        )}
+                        {!m.ttsUrl && (
+                          <button
+                            onClick={() => speak(m.text)}
+                            className="flex items-center gap-1 px-2 text-xs text-slate-400 hover:text-brand-600"
+                          >
+                            <Icons name="mic" className="h-3 w-3" /> Listen
+                          </button>
+                        )}
+                        {i === messages.length - 1 && m.error && !busy && (
+                          <button
+                            onClick={() => {
+                              const userMsg = messages[i - 1];
+                              if (userMsg?.role === "user") send(userMsg.text, i - 1);
+                            }}
+                            className="flex items-center gap-1 px-2 text-xs text-red-400 hover:text-red-600"
+                          >
+                            Retry
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -343,9 +474,9 @@ export default function DiagnosticsPage() {
           {/* Photo analyze bar */}
           {(image || analyzing) && (
             <div className="mb-2 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
-              {image && (
+              {imagePreview && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={URL.createObjectURL(image)} alt="" className="h-8 w-8 rounded-lg object-cover" />
+                <img src={imagePreview} alt="" className="h-8 w-8 rounded-lg object-cover" />
               )}
               <span className="flex-1 text-xs text-slate-600">{analyzing ? "Analyzing photo..." : "Photo ready"}</span>
               {!analyzing && (
@@ -353,7 +484,7 @@ export default function DiagnosticsPage() {
                   <button onClick={analyzePhoto} className="rounded-lg bg-brand-500 px-3 py-1 text-xs font-semibold text-white hover:bg-brand-600">
                     Check
                   </button>
-                  <button onClick={() => setImage(null)} className="text-xs text-slate-400 hover:text-red-500">
+                  <button onClick={() => { if (imagePreview) URL.revokeObjectURL(imagePreview); setImage(null); setImagePreview(null); }} className="text-xs text-slate-400 hover:text-red-500">
                     Cancel
                   </button>
                 </>
@@ -369,10 +500,7 @@ export default function DiagnosticsPage() {
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0] ?? null;
-                  setImage(f);
-                }}
+                onChange={handleImageSelect}
               />
             </label>
 
