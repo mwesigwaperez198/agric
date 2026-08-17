@@ -83,16 +83,21 @@ def debug_gemini(model: str = "gemini-2.5-flash"):
     import httpx
     if not settings.gemini_api_key:
         return {"error": "No GEMINI_API_KEY set"}
-    try:
-        resp = httpx.post(
-            "https://generativelanguage.googleapis.com/v1beta2/interactions",
-            headers={"x-goog-api-key": settings.gemini_api_key, "Content-Type": "application/json"},
-            json={"model": model, "input": "Say hello in 5 words"},
-            timeout=30,
-        )
-        return {"model": model, "status": resp.status_code, "body": resp.text[:500]}
-    except Exception as e:
-        return {"model": model, "error": str(e)}
+    results = {}
+    for endpoint in ["/v1beta2/interactions", "/v1beta/interactions"]:
+        for m in [model, "gemini-2.0-flash", "gemini-1.5-flash"]:
+            try:
+                resp = httpx.post(
+                    f"https://generativelanguage.googleapis.com{endpoint}",
+                    headers={"x-goog-api-key": settings.gemini_api_key, "Content-Type": "application/json"},
+                    json={"model": m, "input": "Say hello in 5 words"},
+                    timeout=30,
+                )
+                key = f"{endpoint} / {m}"
+                results[key] = {"status": resp.status_code, "body": resp.text[:300]}
+            except Exception as e:
+                results[f"{endpoint} / {m}"] = {"error": str(e)}
+    return results
 
 
 for router in (
