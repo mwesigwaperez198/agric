@@ -207,12 +207,28 @@ def _build_live_context(db: DbSession, user_id: int, crop_type: str) -> str:
     """Build a live data context block from the latest biosensor reading for this user's farm."""
     from datetime import UTC, datetime
 
-    reading = (
-        db.query(BiosensorReading)
-        .filter(BiosensorReading.farm_id == user_id)
-        .order_by(BiosensorReading.received_at.desc())
-        .first()
-    )
+    from api.app.models.farm import Farm
+
+    farm_ids = [f.id for f in db.query(Farm.id).filter(Farm.owner_id == user_id).all()]
+    if not farm_ids:
+        reading = (
+            db.query(BiosensorReading)
+            .order_by(BiosensorReading.received_at.desc())
+            .first()
+        )
+    else:
+        reading = (
+            db.query(BiosensorReading)
+            .filter(BiosensorReading.farm_id.in_(farm_ids))
+            .order_by(BiosensorReading.received_at.desc())
+            .first()
+        )
+        if not reading:
+            reading = (
+                db.query(BiosensorReading)
+                .order_by(BiosensorReading.received_at.desc())
+                .first()
+            )
     if not reading:
         return ""
 
