@@ -260,10 +260,10 @@ Answer the question thoroughly and comprehensively. Be as helpful and detailed a
 
     try:
         resp = httpx.post(
-            "https://generativelanguage.googleapis.com/v1beta2/interactions",
+            "https://generativelanguage.googleapis.com/v1beta/interactions",
             headers={"x-goog-api-key": settings.gemini_api_key, "Content-Type": "application/json"},
             json={
-                "model": "gemini-2.5-flash",
+                "model": "gemini-3.5-flash",
                 "input": f"{system_instruction}\n\nUser question: {text}",
             },
             timeout=45,

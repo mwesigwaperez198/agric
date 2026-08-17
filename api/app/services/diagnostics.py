@@ -257,10 +257,10 @@ Analyze carefully. If healthy, still provide monitoring advice."""
     }
 
     resp = httpx.post(
-        "https://generativelanguage.googleapis.com/v1beta2/interactions",
+        "https://generativelanguage.googleapis.com/v1beta/interactions",
         headers={"x-goog-api-key": settings.gemini_api_key, "Content-Type": "application/json"},
         json={
-            "model": "gemini-2.5-flash",
+            "model": "gemini-3.5-flash",
             "input": prompt,
             "media": [{"mime_type": "image/jpeg", "data": b64}],
         },
