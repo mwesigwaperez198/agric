@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 from api.app.deps import CurrentUser, DbSession
+from api.app.models.biosensor import BiosensorReading
 from api.app.models.chat import ChatMessage
 from api.app.schemas.diagnostics import VoiceQueryOut, VoiceQueryRequest
 from api.app.services.voice import (
@@ -123,7 +124,8 @@ def text_chat(body: TextChatRequest, user: CurrentUser, db: DbSession, backgroun
         return VoiceQueryOut(answer=blocked, guardrail=False, dialect=body.locale)
 
     history = _get_history(db, user.id, limit=10)
-    answer_en = _reason(user_text, body.crop_type, history, user.full_name)
+    live_ctx = _build_live_context(db, user.id, body.crop_type)
+    answer_en = _reason(user_text, body.crop_type, history, user.full_name, live_context=live_ctx)
 
     if body.locale != "en":
         background_tasks.add_task(_store_messages_bg, db, user.id, user_text, answer_en, body.locale)
@@ -201,7 +203,49 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def _reason(text: str, crop_type: str, history: list[dict], user_name: str) -> str:
+def _build_live_context(db: DbSession, user_id: int, crop_type: str) -> str:
+    """Build a live data context block from the latest biosensor reading for this user's farm."""
+    from datetime import UTC, datetime
+
+    reading = (
+        db.query(BiosensorReading)
+        .filter(BiosensorReading.farm_id == user_id)
+        .order_by(BiosensorReading.received_at.desc())
+        .first()
+    )
+    if not reading:
+        return ""
+
+    payload = reading.payload or {}
+    parts = ["[LIVE SENSOR DATA]"]
+    parts.append(f"Device: {reading.device_id}")
+    parts.append(f"Crop: {reading.crop_name or crop_type}")
+    parts.append(f"Threat Level: {reading.threat_level} (risk score: {reading.risk_score})")
+    if reading.threats:
+        parts.append(f"Active Threats: {', '.join(str(t) for t in reading.threats)}")
+
+    for key in ["soil_moisture", "soil_temp", "soil_ph", "nitrogen", "phosphorus", "potassium",
+                 "air_temp", "humidity", "light_lux", "co2_ppm", "rainfall_mm"]:
+        if key in payload and payload[key] is not None:
+            label = key.replace("_", " ").title()
+            unit = {"soil_moisture": "%", "soil_temp": "°C", "soil_ph": "", "nitrogen": "ppm",
+                     "phosphorus": "ppm", "potassium": "ppm", "air_temp": "°C", "humidity": "%",
+                     "light_lux": " lux", "co2_ppm": " ppm", "rainfall_mm": " mm"}.get(key, "")
+            parts.append(f"{label}: {payload[key]}{unit}")
+
+    if reading.read_at:
+        age = datetime.now(UTC) - reading.read_at.replace(tzinfo=UTC)
+        mins = int(age.total_seconds() / 60)
+        if mins < 1440:
+            parts.append(f"Reading age: {mins} minutes ago")
+        else:
+            parts.append(f"Reading age: {mins // 1440} days ago")
+
+    parts.append("[/LIVE SENSOR DATA]")
+    return "\n".join(parts) + "\n\n"
+
+
+def _reason(text: str, crop_type: str, history: list[dict], user_name: str, live_context: str = "") -> str:
     from api.app.config import settings
 
     normalized = _normalize(text)
@@ -243,20 +287,7 @@ Primary crop: {crop_type}
 
 Answer the question thoroughly and comprehensively. Be as helpful and detailed as Google Assistant."""
 
-    contents = []
-    for msg in history[-6:]:
-        role = "user" if msg["role"] == "user" else "model"
-        contents.append({"role": role, "parts": [{"text": msg["content"]}]})
-    contents.append({"role": "user", "parts": [{"text": text}]})
-
-    payload = {
-        "system_instruction": {"parts": [{"text": system_instruction}]},
-        "contents": contents,
-        "generation_config": {
-            "temperature": 0.7,
-            "max_output_tokens": 1500,
-        },
-    }
+    full_input = f"{live_context}{system_instruction}\n\nUser question: {text}" if live_context else f"{system_instruction}\n\nUser question: {text}"
 
     try:
         resp = httpx.post(
@@ -264,7 +295,7 @@ Answer the question thoroughly and comprehensively. Be as helpful and detailed a
             headers={"x-goog-api-key": settings.gemini_api_key, "Content-Type": "application/json"},
             json={
                 "model": "gemini-3.5-flash",
-                "input": f"{system_instruction}\n\nUser question: {text}",
+                "input": full_input,
             },
             timeout=45,
         )
