@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     openweather_api_key: str = ""
 
+    # OTP 2FA (SMS via Africa's Talking, Email via Resend)
+    resend_api_key: str = ""
+    africastalking_api_key: str = ""
+    africastalking_username: str = "sandbox"
+    otp_expire_minutes: int = 5
+    otp_max_attempts: int = 5
+
     # WhatsApp Cloud API
     whatsapp_token: str = ""
     whatsapp_phone_number_id: str = ""

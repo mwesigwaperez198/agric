@@ -39,10 +39,28 @@ class TokenPair(BaseModel):
     refresh_token: str | None = None
     token_type: str = "bearer"
     totp_required: bool = False
+    otp_required: bool = False
+    otp_target: str | None = None
 
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+
+
+class OtpSendRequest(BaseModel):
+    delivery: str = Field(pattern="^(sms|email)$")
+
+
+class OtpVerifyRequest(BaseModel):
+    email: EmailStr
+    password: str
+    code: str = Field(min_length=6, max_length=6)
+
+
+class OtpSetupRequest(BaseModel):
+    delivery: str = Field(pattern="^(sms|email)$")
+    target: str = Field(min_length=3, max_length=255)
+    code: str = Field(min_length=6, max_length=6)
 
 
 class UserOut(BaseModel):
@@ -57,4 +75,6 @@ class UserOut(BaseModel):
     is_active: bool
     is_verified: bool
     totp_enabled: bool
+    otp_enabled: bool
+    otp_method: str | None
     created_at: datetime

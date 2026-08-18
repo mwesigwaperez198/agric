@@ -14,6 +14,8 @@ export interface User {
   phone: string | null;
   is_verified: boolean;
   totp_enabled: boolean;
+  otp_enabled: boolean;
+  otp_method: string | null;
 }
 
 interface AuthState {

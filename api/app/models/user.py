@@ -21,6 +21,8 @@ class User(Base):
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     totp_secret_enc: Mapped[str | None] = mapped_column(Text)
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    otp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    otp_method: Mapped[str | None] = mapped_column(String(8))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(

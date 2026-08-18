@@ -37,6 +37,7 @@ def init_db() -> None:
         chat,
         knowledge,
         listing,
+        otp,
         trade,
         user,
     )
