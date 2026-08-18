@@ -56,7 +56,7 @@ const CROP_DISPLAY: Record<string, string> = {
   cocoa: "\uD83C\uDF6B", tea: "\uD83C\uDF75", rice: "\uD83C\uDF5A", millet: "\uD83C\uDF3E",
   sorghum: "\uD83C\uDF3E", sesame: "\uD83C\uDF30", sunflower: "\uD83C\uDF3B", wheat: "\uD83C\uDF3E",
   tomato: "\uD83C\uDF45", onion: "\uD83C\uDF46", avocado: "\uD83E\uDD51", mango: "\uD83C\uDF4D",
-  pineapple: "\uD83C\uDF4D", papaya: "\uD83C\uDF4D", tea: "\uD83C\uDF75",
+  pineapple: "\uD83C\uDF4D", papaya: "\uD83C\uDF4D",
   sugarcane: "\uD83C\uDF3F", cotton: "\u2601\uFE0F", macadamia: "\uD83E\uDD5C", cashew: "\uD83E\uDD5C",
   ginger: "\uD83E\uDDC2", turmeric: "\uD83E\uDDC2", watermelon: "\uD83C\uDF49",
   pumpkin: "\uD83C\uDF83", cabbage: "\uD83C\uDF6F", okra: "\uD83C\uDF31",
@@ -67,7 +67,7 @@ const CROP_DISPLAY: Record<string, string> = {
   cinnamon: "\uD83C\uDF2F\uFE0F", clove: "\uD83C\uDF36\uFE0F", rubber: "\uD83D\uDCA2",
   lentil: "\uD83C\uDF31", chickpea: "\uD83C\uDF31", pigeon_pea: "\uD83C\uDF31",
   cowpea: "\uD83C\uDF31", peanut: "\uD83C\uDF30", tobacco: "\uD83C\uDF3F",
-  teff: "\uD83C\uDF3E", lettuce: "\uD83C\uDF3F",
+  teff: "\uD83C\uDF3E",
 };
 
 function getCropEmoji(name: string): string {
