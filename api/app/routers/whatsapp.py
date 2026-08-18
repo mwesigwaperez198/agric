@@ -179,12 +179,11 @@ def _handle_audio_message(db, phone: str, audio_id: str) -> str:
 
 
 @router.get("/webhook")
-async def webhook_verify(
-    hub_mode: str = Query(alias="hub.mode"),
-    hub_token: str = Query(alias="hub.verify_token"),
-    hub_challenge: str = Query(alias="hub.challenge"),
-):
+async def webhook_verify(request: Request):
     """Meta webhook verification endpoint."""
+    hub_mode = request.query_params.get("hub.mode", "")
+    hub_token = request.query_params.get("hub.verify_token", "")
+    hub_challenge = request.query_params.get("hub.challenge", "")
     challenge = verify_webhook(hub_mode, hub_token, hub_challenge, settings.whatsapp_verify_token)
     if challenge:
         return Response(content=challenge, media_type="text/plain")
