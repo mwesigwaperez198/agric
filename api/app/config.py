@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     openweather_api_key: str = ""
 
+    # WhatsApp Cloud API
+    whatsapp_token: str = ""
+    whatsapp_phone_number_id: str = ""
+    whatsapp_verify_token: str = "farm2fork-verify"
+
     # Uploads
     upload_dir: str = "data/uploads"
     max_upload_bytes: int = 8 * 1024 * 1024

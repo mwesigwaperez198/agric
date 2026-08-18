@@ -21,6 +21,7 @@ from api.app.routers import (
     users,
     voice,
     webhooks,
+    whatsapp,
 )
 
 
@@ -90,6 +91,7 @@ for router in (
     market.router,
     webhooks.router,
     admin.router,
+    whatsapp.router,
 ):
     app.include_router(router, prefix=settings.api_prefix)
 
