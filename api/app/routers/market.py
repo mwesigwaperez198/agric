@@ -3,14 +3,21 @@ from fastapi import APIRouter, HTTPException, Query
 from api.app.deps import AnyRole, CurrentUser, DbSession
 from api.app.models import PricePoint
 from api.app.schemas.market import (
+    CropInfoOut,
     CropRecommendationOut,
     ForecastPoint,
     MarketInsightOut,
     PriceForecastOut,
 )
-from api.app.services.market import forecast_prices, recommend_crops, top_trends
+from api.app.services.market import forecast_prices, list_all_crops, recommend_crops, top_trends
 
 router = APIRouter(prefix="/market", tags=["market"])
+
+
+@router.get("/crops", response_model=list[CropInfoOut])
+def get_all_crops(user: AnyRole):
+    """List all supported crops with agronomic metadata."""
+    return [CropInfoOut(**c) for c in list_all_crops()]
 
 
 @router.get("/forecast/{crop}", response_model=PriceForecastOut)

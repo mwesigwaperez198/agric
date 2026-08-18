@@ -27,14 +27,58 @@ interface Recommendation {
   crop_name: string;
   score: number;
   confidence: string;
+  priority: string;
   reasons: string[];
   recommended: boolean;
+  type: string;
+  season: string;
+  ideal_temp: number;
+  ideal_rain: number;
+  current_price: number | null;
 }
 
 interface Insights {
   top_trends: Array<{ crop_name: string; region: string; trend: string; current_price: number; expected_change_pct: number }>;
   recommendations: Recommendation[];
 }
+
+interface CropInfo {
+  name: string;
+  type: string;
+  ideal_temp: number;
+  ideal_rain: number;
+  season: string;
+}
+
+const CROP_DISPLAY: Record<string, string> = {
+  coffee: "\u2615", maize: "\uD83C\uDF3D", beans: "\uD83C\uDF31", groundnuts: "\uD83C\uDF30",
+  soybean: "\uD83C\uDF31", cassava: "\uD83C\uDF38", banana: "\uD83C\uDF4C", vanilla: "\uD83C\uDF3F",
+  cocoa: "\uD83C\uDF6B", tea: "\uD83C\uDF75", rice: "\uD83C\uDF5A", millet: "\uD83C\uDF3E",
+  sorghum: "\uD83C\uDF3E", sesame: "\uD83C\uDF30", sunflower: "\uD83C\uDF3B", wheat: "\uD83C\uDF3E",
+  tomato: "\uD83C\uDF45", onion: "\uD83C\uDF46", avocado: "\uD83E\uDD51", mango: "\uD83C\uDF4D",
+  pineapple: "\uD83C\uDF4D", papaya: "\uD83C\uDF4D", tea: "\uD83C\uDF75",
+  sugarcane: "\uD83C\uDF3F", cotton: "\u2601\uFE0F", macadamia: "\uD83E\uDD5C", cashew: "\uD83E\uDD5C",
+  ginger: "\uD83E\uDDC2", turmeric: "\uD83E\uDDC2", watermelon: "\uD83C\uDF49",
+  pumpkin: "\uD83C\uDF83", cabbage: "\uD83C\uDF6F", okra: "\uD83C\uDF31",
+  eggplant: "\uD83C\uDF46", capsicum: "\uD83C\uDF36\uFE0F", chilli: "\uD83C\uDF36\uFE0F",
+  passion_fruit: "\uD83C\uDF53", jackfruit: "\uD83C\uDF4D", sweet_potato: "\uD83C\uDF60",
+  irish_potato: "\uD83C\uDF54", spinach: "\uD83C\uDF3F", lettuce: "\uD83C\uDF3F",
+  amaranth: "\uD83C\uDF3F", cucumber: "\uD83C\uDF52", black_pepper: "\uD83C\uDF36\uFE0F",
+  cinnamon: "\uD83C\uDF2F\uFE0F", clove: "\uD83C\uDF36\uFE0F", rubber: "\uD83D\uDCA2",
+  lentil: "\uD83C\uDF31", chickpea: "\uD83C\uDF31", pigeon_pea: "\uD83C\uDF31",
+  cowpea: "\uD83C\uDF31", peanut: "\uD83C\uDF30", tobacco: "\uD83C\uDF3F",
+  teff: "\uD83C\uDF3E", lettuce: "\uD83C\uDF3F",
+};
+
+function getCropEmoji(name: string): string {
+  return CROP_DISPLAY[name] || "\uD83C\uDF3E";
+}
+
+const PRIORITY_STYLES: Record<string, { bg: string; border: string; badge: string; label: string }> = {
+  high: { bg: "bg-emerald-50", border: "border-emerald-200", badge: "bg-emerald-100 text-emerald-800", label: "HIGH PRIORITY" },
+  moderate: { bg: "bg-amber-50", border: "border-amber-200", badge: "bg-amber-100 text-amber-800", label: "MODERATE" },
+  low: { bg: "bg-slate-50", border: "border-slate-200", badge: "bg-slate-100 text-slate-600", label: "LOW" },
+};
 
 function PriceChart({ forecast }: { forecast: ForecastPoint[] }) {
   const width = 520;
@@ -61,6 +105,70 @@ function PriceChart({ forecast }: { forecast: ForecastPoint[] }) {
   );
 }
 
+function RecommendationCard({ rec, isExpanded, onToggle }: { rec: Recommendation; isExpanded: boolean; onToggle: () => void }) {
+  const style = PRIORITY_STYLES[rec.priority] ?? PRIORITY_STYLES.low;
+  const emoji = getCropEmoji(rec.crop_name);
+
+  return (
+    <div className={`rounded-xl border ${style.border} ${style.bg} overflow-hidden transition-all`}>
+      <button onClick={onToggle} className="flex w-full items-center justify-between px-4 py-3 text-left">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">{emoji}</span>
+          <div>
+            <p className="flex items-center gap-2 font-semibold capitalize text-slate-800">
+              {rec.crop_name.replace(/_/g, " ")}
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${style.badge}`}>
+                {style.label}
+              </span>
+            </p>
+            <p className="text-xs text-slate-500">{rec.type} \u00B7 {rec.season}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <p className="text-lg font-bold text-brand-600">{rec.score}</p>
+            <p className="text-[10px] text-slate-400">/10</p>
+          </div>
+          <span className="text-slate-400">{isExpanded ? "\u25B2" : "\u25BC"}</span>
+        </div>
+      </button>
+
+      {isExpanded && (
+        <div className="border-t border-slate-100 px-4 py-3 space-y-2">
+          <div className="grid grid-cols-3 gap-2 text-center text-xs">
+            <div className="rounded-lg bg-white px-2 py-1.5">
+              <p className="text-slate-500">Ideal temp</p>
+              <p className="font-bold text-slate-800">{rec.ideal_temp}C</p>
+            </div>
+            <div className="rounded-lg bg-white px-2 py-1.5">
+              <p className="text-slate-500">Ideal rain</p>
+              <p className="font-bold text-slate-800">{rec.ideal_rain}mm</p>
+            </div>
+            <div className="rounded-lg bg-white px-2 py-1.5">
+              <p className="text-slate-500">Confidence</p>
+              <p className="font-bold capitalize text-slate-800">{rec.confidence}</p>
+            </div>
+          </div>
+          {rec.current_price && (
+            <div className="rounded-lg bg-white px-3 py-2 text-sm">
+              <span className="text-slate-500">Current price: </span>
+              <span className="font-bold text-slate-800">{formatMoney(rec.current_price, "UGX")}</span>
+            </div>
+          )}
+          <div className="space-y-1">
+            {rec.reasons.map((reason, i) => (
+              <p key={i} className="flex items-start gap-2 text-xs text-slate-600">
+                <span className="mt-0.5 text-brand-500">\u2022</span>
+                {reason}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function InsightsPage() {
   useRequireAuth();
   const [insights, setInsights] = useState<Insights | null>(null);
@@ -68,6 +176,8 @@ export default function InsightsPage() {
   const [crop, setCrop] = useState("coffee");
   const [forecast, setForecast] = useState<Forecast | null>(null);
   const [forecastLoading, setForecastLoading] = useState(false);
+  const [expandedRec, setExpandedRec] = useState<string | null>(null);
+  const [filter, setFilter] = useState<"all" | "high" | "moderate" | "low">("all");
 
   useEffect(() => {
     apiFetch<Insights>("/market/insights")
@@ -87,12 +197,21 @@ export default function InsightsPage() {
   const trendColor = (t: string) =>
     t === "up" ? "text-emerald-600" : t === "down" ? "text-red-600" : "text-slate-600";
 
+  const filteredRecs = insights?.recommendations.filter((r) => filter === "all" || r.priority === filter) ?? [];
+  const highCount = insights?.recommendations.filter((r) => r.priority === "high").length ?? 0;
+  const moderateCount = insights?.recommendations.filter((r) => r.priority === "moderate").length ?? 0;
+  const lowCount = insights?.recommendations.filter((r) => r.priority === "low").length ?? 0;
+
+  const allCrops = ["coffee", "maize", "beans", "groundnuts", "soybean", "cassava", "banana", "vanilla",
+    "cocoa", "tea", "rice", "millet", "sorghum", "sesame", "sunflower", "wheat",
+    "tomato", "onion", "avocado", "mango", "pineapple", "sugarcane", "cotton", "macadamia", "cashew"];
+
   return (
     <div className="animate-fade-in space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Market insights</h1>
         <p className="text-sm text-slate-500">
-          Price forecasting and weather-driven crop recommendations for better decisions.
+          Price forecasting, weather-driven recommendations and crop guidance for 50+ crops.
         </p>
       </div>
 
@@ -104,8 +223,8 @@ export default function InsightsPage() {
             </h2>
             <select value={crop} onChange={(e) => setCrop(e.target.value)}
               className="rounded-xl border border-slate-300 px-3 py-1.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
-              {["coffee", "maize", "vanilla"].map((c) => (
-                <option key={c} value={c}>{c[0].toUpperCase() + c.slice(1)}</option>
+              {allCrops.map((c) => (
+                <option key={c} value={c}>{c[0].toUpperCase() + c.slice(1).replace(/_/g, " ")}</option>
               ))}
             </select>
           </div>
@@ -135,35 +254,39 @@ export default function InsightsPage() {
             </>
           ) : (
             <p className="mt-4 text-sm text-slate-500">
-              No price history for {crop}. Run the seed script or record prices to enable forecasting.
+              No price history for {crop.replace(/_/g, " ")}. Seed price data to enable forecasting.
             </p>
           )}
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-3 flex items-center gap-2 font-semibold text-slate-900">
-            <Icons name="spark" className="h-4 w-4 text-brand-600" /> Crop recommendations
-          </h2>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 font-semibold text-slate-900">
+              <Icons name="spark" className="h-4 w-4 text-brand-600" /> Crop recommendations
+            </h2>
+            <div className="flex gap-1">
+              {(["all", "high", "moderate", "low"] as const).map((f) => (
+                <button key={f} onClick={() => setFilter(f)}
+                  className={`rounded-lg px-2 py-1 text-[10px] font-bold transition-colors ${
+                    filter === f ? "bg-brand-500 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                  }`}>
+                  {f === "all" ? "All" : f === "high" ? `High (${highCount})` : f === "moderate" ? `Mod (${moderateCount})` : `Low (${lowCount})`}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {loading ? (
             <Spinner />
-          ) : insights?.recommendations.length ? (
-            <div className="space-y-3">
-              {insights.recommendations.map((rec) => (
-                <div key={rec.crop_name} className="flex items-start justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
-                  <div>
-                    <p className="flex items-center gap-2 font-semibold capitalize text-slate-800">
-                      {rec.crop_name}
-                      {rec.recommended && (
-                        <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-700">RECOMMENDED</span>
-                      )}
-                    </p>
-                    <p className="text-xs text-slate-500">{rec.reasons[0]}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-brand-600">{rec.score}/10</p>
-                    <p className="text-[11px] capitalize text-slate-400">{rec.confidence}</p>
-                  </div>
-                </div>
+          ) : filteredRecs.length ? (
+            <div className="max-h-[500px] space-y-2 overflow-y-auto pr-1">
+              {filteredRecs.map((rec) => (
+                <RecommendationCard
+                  key={rec.crop_name}
+                  rec={rec}
+                  isExpanded={expandedRec === rec.crop_name}
+                  onToggle={() => setExpandedRec(expandedRec === rec.crop_name ? null : rec.crop_name)}
+                />
               ))}
             </div>
           ) : (
@@ -179,9 +302,11 @@ export default function InsightsPage() {
             {insights.top_trends.map((t) => (
               <div key={`${t.crop_name}-${t.region}`} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
                 <div className="flex items-center justify-between">
-                  <p className="font-semibold capitalize text-slate-800">{t.crop_name}</p>
+                  <p className="font-semibold capitalize text-slate-800">
+                    {getCropEmoji(t.crop_name)} {t.crop_name.replace(/_/g, " ")}
+                  </p>
                   <span className={`text-xs font-bold ${trendColor(t.trend)}`}>
-                    {t.trend === "up" ? "▲" : t.trend === "down" ? "▼" : "▬"} {t.trend}
+                    {t.trend === "up" ? "\u25B2" : t.trend === "down" ? "\u25BC" : "\u25AC"} {t.trend}
                   </span>
                 </div>
                 <p className="mt-1 text-sm text-slate-600">

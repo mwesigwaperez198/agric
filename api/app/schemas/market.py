@@ -21,13 +21,27 @@ class CropRecommendationOut(BaseModel):
     crop_name: str
     score: float
     confidence: str
+    priority: str = "low"
     reasons: list[str]
     recommended: bool
+    type: str = "annual"
+    season: str = "all-year"
+    ideal_temp: int = 25
+    ideal_rain: int = 1000
+    current_price: float | None = None
 
 
 class MarketInsightOut(BaseModel):
     top_trends: list[dict]
     recommendations: list[CropRecommendationOut]
+
+
+class CropInfoOut(BaseModel):
+    name: str
+    type: str
+    ideal_temp: int
+    ideal_rain: int
+    season: str
 
 
 class TranslationOut(BaseModel):
