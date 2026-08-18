@@ -77,6 +77,27 @@ def register(body: RegisterRequest, request: Request, db: DbSession):
     return _token_pair(user)
 
 
+@router.post("/login-phone", response_model=TokenPair)
+def login_phone(body: dict, request: Request, db: DbSession):
+    """Login with phone number + 4-digit PIN (WhatsApp-created accounts)."""
+    allowed, retry = rate_limit(f"login:{request.client.host}", limit=30)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=f"Too many attempts, retry in {retry}s")
+
+    phone = (body.get("phone") or "").strip()
+    pin = (body.get("pin") or "").strip()
+    if not phone or not pin:
+        raise HTTPException(status_code=400, detail="Phone and PIN are required")
+
+    user = db.query(User).filter(User.phone == phone).first()
+    if not user or not verify_password(pin, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid phone or PIN")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account disabled")
+
+    return _token_pair(user)
+
+
 @router.post("/login", response_model=TokenPair)
 def login(body: LoginRequest, request: Request, db: DbSession):
     allowed, retry = rate_limit(f"login:{request.client.host}", limit=30)
