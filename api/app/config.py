@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     whatsapp_phone_number_id: str = ""
     whatsapp_verify_token: str = "farm2fork-verify"
 
+    def model_post_init(self, __context: object) -> None:
+        """Strip whitespace and surrounding quotes from secrets."""
+        for field in self.model_fields:
+            val = getattr(self, field)
+            if isinstance(val, str):
+                stripped = val.strip().strip('"').strip("'")
+                if stripped != val:
+                    setattr(self, field, stripped)
+
     # Uploads
     upload_dir: str = "data/uploads"
     max_upload_bytes: int = 8 * 1024 * 1024

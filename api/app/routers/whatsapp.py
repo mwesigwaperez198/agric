@@ -184,12 +184,28 @@ async def webhook_verify(request: Request):
     hub_mode = request.query_params.get("hub.mode", "")
     hub_token = request.query_params.get("hub.verify_token", "")
     hub_challenge = request.query_params.get("hub.challenge", "")
-    logger.info("Webhook verify: mode=%r token=%r challenge=%r expected=%r",
-                hub_mode, hub_token, hub_challenge, settings.whatsapp_verify_token)
-    challenge = verify_webhook(hub_mode, hub_token, hub_challenge, settings.whatsapp_verify_token)
-    if challenge:
-        return Response(content=challenge, media_type="text/plain")
+    expected = settings.whatsapp_verify_token
+    logger.info("Webhook verify: mode=%r token=%r challenge=%r expected=%r token_len=%d expected_len=%d",
+                hub_mode, hub_token, hub_challenge, expected, len(hub_token), len(expected))
+    if hub_mode == "subscribe" and hub_token == expected and hub_challenge:
+        logger.info("WhatsApp webhook verified")
+        return Response(content=hub_challenge, media_type="text/plain")
+    if hub_mode == "subscribe" and hub_challenge:
+        logger.warning("WhatsApp verify token mismatch: got=%r expected_len=%d", hub_token, len(expected))
     raise HTTPException(status_code=403, detail="Verification failed")
+
+
+@router.get("/webhook/debug")
+async def webhook_debug(request: Request):
+    """Temporary debug endpoint to check env var state."""
+    expected = settings.whatsapp_verify_token
+    return {
+        "expected_token_length": len(expected),
+        "expected_token_first5": expected[:5] if expected else "",
+        "expected_token_last5": expected[-5:] if expected else "",
+        "whatsapp_token_set": bool(settings.whatsapp_token),
+        "phone_number_id_set": bool(settings.whatsapp_phone_number_id),
+    }
 
 
 @router.post("/webhook")
