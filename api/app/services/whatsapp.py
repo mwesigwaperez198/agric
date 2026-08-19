@@ -22,10 +22,15 @@ def _headers(token: str) -> dict:
 
 def verify_webhook(mode: str, token: str, challenge: str, verify_token: str) -> str | None:
     """Verify Meta webhook subscription. Returns challenge on success, None on failure."""
+    mode = (mode or "").strip()
+    token = (token or "").strip()
+    verify_token = (verify_token or "").strip()
+    logger.info("verify_webhook: mode=%r token=%r challenge=%r expected=%r match=%s",
+                mode, token, challenge, verify_token, token == verify_token)
     if mode == "subscribe" and token == verify_token:
         logger.info("WhatsApp webhook verified")
         return challenge
-    logger.warning("WhatsApp webhook verification failed: mode=%s", mode)
+    logger.warning("WhatsApp webhook verification failed: mode=%r token=%r expected=%r", mode, token, verify_token)
     return None
 
 

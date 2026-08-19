@@ -184,6 +184,8 @@ async def webhook_verify(request: Request):
     hub_mode = request.query_params.get("hub.mode", "")
     hub_token = request.query_params.get("hub.verify_token", "")
     hub_challenge = request.query_params.get("hub.challenge", "")
+    logger.info("Webhook verify: mode=%r token=%r challenge=%r expected=%r",
+                hub_mode, hub_token, hub_challenge, settings.whatsapp_verify_token)
     challenge = verify_webhook(hub_mode, hub_token, hub_challenge, settings.whatsapp_verify_token)
     if challenge:
         return Response(content=challenge, media_type="text/plain")
@@ -196,6 +198,13 @@ async def webhook_handler(request: Request):
     from api.app.database import SessionLocal
 
     body = await request.json()
+
+    # Meta may also send verification as POST
+    if body.get("hub.mode") == "subscribe":
+        hub_token = body.get("hub.verify_token", "")
+        hub_challenge = body.get("hub.challenge", "")
+        if hub_token == settings.whatsapp_verify_token and hub_challenge:
+            return Response(content=str(hub_challenge), media_type="text/plain")
 
     if body.get("object") != "whatsapp_business_account":
         return {"status": "ignored"}
